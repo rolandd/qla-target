@@ -80,7 +80,7 @@ enum fcp_resp_rsp_codes {
 #define FCP_PRI_RESVD_MASK  0x80        /* reserved bits in priority field */
 
 /*
- * This driver calls qla2x00_req_pkt() and qla2x00_issue_marker(), which
+ * This driver calls qla2x00_alloc_iocbs() and qla2x00_issue_marker(), which
  * must be called under HW lock and could unlock/lock it inside.
  * It isn't an issue, since in the current implementation on the time when
  * those functions are called:
@@ -110,10 +110,6 @@ static mempool_t *qla_tgt_mgmt_cmd_mempool;
 static struct workqueue_struct *qla_tgt_wq;
 static DEFINE_MUTEX(qla_tgt_mutex);
 static LIST_HEAD(qla_tgt_glist);
-/*
- * From qla2xxx/qla_iobc.c and used by various qla_target.c logic
- */
-extern request_t *qla2x00_req_pkt(struct scsi_qla_host *);
 
 /* ha->hardware_lock supposed to be held on entry (to protect tgt->sess_list) */
 static struct qla_tgt_sess *qla_tgt_find_sess_by_port_name(
@@ -1122,7 +1118,7 @@ static void qla_tgt_send_notify_ack(struct scsi_qla_host *vha,
 	if (qla_tgt_issue_marker(vha, 1) != QLA_SUCCESS)
 		return;
 
-	pkt = (request_t *)qla2x00_req_pkt(vha);
+	pkt = (request_t *)qla2x00_alloc_iocbs(vha, NULL);
 	if (!pkt) {
 		printk(KERN_ERR "qla_target(%d): %s failed: unable to allocate "
 			"request packet\n", vha->vp_idx, __func__);
@@ -1180,7 +1176,7 @@ static void qla_tgt_24xx_send_abts_resp(struct scsi_qla_host *vha,
 	if (qla_tgt_issue_marker(vha, 1) != QLA_SUCCESS)
 		return;
 
-	resp = (abts_resp_to_24xx_t *)qla2x00_req_pkt(vha);
+	resp = (abts_resp_to_24xx_t *)qla2x00_alloc_iocbs(vha, NULL);
 	if (!resp) {
 		printk(KERN_ERR "qla_target(%d): %s failed: unable to allocate "
 			"request packet", vha->vp_idx, __func__);
@@ -1250,7 +1246,7 @@ static void qla_tgt_24xx_retry_term_exchange(struct scsi_qla_host *vha,
 	if (qla_tgt_issue_marker(vha, 1) != QLA_SUCCESS)
 		return;
 
-	ctio = (ctio7_to_24xx_t *)qla2x00_req_pkt(vha);
+	ctio = (ctio7_to_24xx_t *)qla2x00_alloc_iocbs(vha, NULL);
 	if (ctio == NULL) {
 		printk(KERN_ERR "qla_target(%d): %s failed: unable to allocate "
 			"request packet\n", vha->vp_idx, __func__);
@@ -1387,7 +1383,7 @@ static void qla_tgt_24xx_send_task_mgmt_ctio(struct scsi_qla_host *ha,
 	if (qla_tgt_issue_marker(ha, 1) != QLA_SUCCESS)
 		return;
 
-	ctio = (ctio7_to_24xx_t *)qla2x00_req_pkt(ha);
+	ctio = (ctio7_to_24xx_t *)qla2x00_alloc_iocbs(ha, NULL);
 	if (ctio == NULL) {
 		printk(KERN_ERR "qla_target(%d): %s failed: unable to allocate "
 			"request packet\n", ha->vp_idx, __func__);
@@ -2165,7 +2161,7 @@ static int __qla_tgt_send_term_exchange(struct scsi_qla_host *vha, struct qla_tg
 
 	ql_dbg(ql_dbg_tgt, vha, 0xe01c, "Sending TERM EXCH CTIO (ha=%p)\n", ha);
 
-	pkt = (request_t *)qla2x00_req_pkt(vha);
+	pkt = (request_t *)qla2x00_alloc_iocbs(vha, NULL);
 	if (pkt == NULL) {
 		printk(KERN_ERR "qla_target(%d): %s failed: unable to allocate "
 			"request packet\n", vha->vp_idx, __func__);
@@ -3517,7 +3513,7 @@ static void qla_tgt_send_busy(struct scsi_qla_host *vha,
 	}
 	/* Sending marker isn't necessary, since we called from ISR */
 
-	pkt = (request_t *)qla2x00_req_pkt(vha);
+	pkt = (request_t *)qla2x00_alloc_iocbs(vha, NULL);
 	if (!pkt) {
 		printk(KERN_ERR "qla_target(%d): %s failed: unable to allocate "
 			"request packet", vha->vp_idx, __func__);
