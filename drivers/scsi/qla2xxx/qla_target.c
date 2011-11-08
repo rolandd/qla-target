@@ -2839,6 +2839,11 @@ static int qla_tgt_handle_task_mgmt(struct scsi_qla_host *vha, void *iocb)
 	int lun_size, fn, res = 0;
 
 	tgt = ha->qla_tgt;
+	if (tgt->tgt_stop) {
+		printk("dropping tmr because tgt->tgt_stop != 0\n");
+		return -ENODEV;
+	}
+
 
 	lun = a->u.isp24.fcp_cmnd.lun;
 	lun_size = sizeof(a->u.isp24.fcp_cmnd.lun);
@@ -2856,6 +2861,11 @@ static int qla_tgt_handle_task_mgmt(struct scsi_qla_host *vha, void *iocb)
 			tgt->tm_to_unknown = 1;
 
 		return res;
+	}
+
+	if (sess->tearing_down) {
+		printk("dropping tmr because sess->tearing_down != 0\n");
+		return -ENODEV;
 	}
 
 	return qla_tgt_issue_task_mgmt(sess, unpacked_lun, fn, iocb, 0);
