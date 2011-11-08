@@ -978,7 +978,6 @@ void qla_tgt_stop_phase1(struct qla_tgt *tgt)
 
 	if (tgt->tgt_stop || tgt->tgt_stopped) {
 		printk(KERN_ERR "Already in tgt->tgt_stop or tgt_stopped state\n");
-		dump_stack();
 		return;
 	}
 
