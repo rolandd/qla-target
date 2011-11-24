@@ -249,8 +249,8 @@ u32 native_safe_apic_wait_icr_idle(void)
 		send_status = apic_read(APIC_ICR) & APIC_ICR_BUSY;
 		if (!send_status)
 			break;
-		udelay(100);
-	} while (timeout++ < 1000);
+		ndelay(100);
+	} while (timeout++ < 1000 * 1000);
 
 	return send_status;
 }
