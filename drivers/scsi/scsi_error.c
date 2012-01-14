@@ -25,6 +25,7 @@
 #include <linux/interrupt.h>
 #include <linux/blkdev.h>
 #include <linux/delay.h>
+#include <linux/ratelimit.h>
 
 #include <scsi/scsi.h>
 #include <scsi/scsi_cmnd.h>
@@ -1346,6 +1347,7 @@ int scsi_noretry_cmd(struct scsi_cmnd *scmd)
  */
 int scsi_decide_disposition(struct scsi_cmnd *scmd)
 {
+	static DEFINE_RATELIMIT_STATE(ratelimit, 5 * HZ, 10);
 	int rtn;
 
 	/*
@@ -1504,8 +1506,9 @@ int scsi_decide_disposition(struct scsi_cmnd *scmd)
 		return SUCCESS;
 
 	case RESERVATION_CONFLICT:
-		sdev_printk(KERN_INFO, scmd->device,
-			    "reservation conflict\n");
+		if (__ratelimit(&ratelimit))
+			sdev_printk(KERN_INFO, scmd->device,
+				    "reservation conflict\n");
 		scmd->result |= (DID_NEXUS_FAILURE << 16);
 		return SUCCESS; /* causes immediate i/o error */
 	default:
