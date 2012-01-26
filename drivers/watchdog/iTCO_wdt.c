@@ -957,6 +957,12 @@ static int __devinit iTCO_wdt_init(struct pci_dev *pdev,
 			iTCO_chipset_info[ent->driver_data].iTCO_version,
 			TCOBASE);
 
+	{
+		/* Give some indication whether the watchdog killed us */
+		int val = inw(TCO2_STS);
+		if (val & 0x0002)
+			printk(KERN_ERR PFX "Watchdog timed out before boot\n");
+	}
 	/* Clear out the (probably old) status */
 	outw(0x0008, TCO1_STS);	/* Clear the Time Out Status bit */
 	outw(0x0002, TCO2_STS);	/* Clear SECOND_TO_STS bit */
