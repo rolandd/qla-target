@@ -64,6 +64,9 @@
 #include <linux/spinlock.h>		/* For spin_lock/spin_unlock/... */
 #include <linux/uaccess.h>		/* For copy_to_user/put_user/... */
 #include <linux/io.h>			/* For inb/outb/... */
+#include <linux/sched.h>
+#include <linux/signal.h>
+#include <linux/syscalls.h>
 
 #include "iTCO_vendor.h"
 
@@ -513,6 +516,43 @@ MODULE_PARM_DESC(nowayout,
 	"Watchdog cannot be stopped once started (default="
 				__MODULE_STRING(WATCHDOG_NOWAYOUT) ")");
 
+static void pretimeout_sync(struct work_struct *);
+
+static struct task_struct *pretimeout_task;
+static DEFINE_SPINLOCK(iTCO_task_lock);
+static void pretimeout_fire(unsigned long);
+static int pretimeout;
+static int pretimeout_delta;
+static DEFINE_TIMER(pretimeout_timer, pretimeout_fire, 0, 0);
+static DECLARE_WORK(pretimeout_work, pretimeout_sync);
+
+static int set_pretimeout(int new_delta, int new_heartbeat)
+{
+	if (new_delta < 0 || new_delta >= new_heartbeat)
+		return -EINVAL;
+	pretimeout_delta = new_delta;
+	pretimeout = new_heartbeat - new_delta;
+	return 0;
+}
+
+static void pretimeout_fire(unsigned long unused)
+{
+	printk(KERN_EMERG PFX"Watchdog will fire in %ds\n", pretimeout_delta);
+	spin_lock(&iTCO_task_lock);
+	if (pretimeout_task) {
+		send_sig(SIGILL, pretimeout_task, 0);
+		printk(KERN_EMERG PFX"Sent SIGILL to %d\n", pretimeout_task->pid);
+	} else
+		printk(KERN_EMERG PFX"Noone around to notify\n");
+	spin_unlock(&iTCO_task_lock);
+	schedule_work(&pretimeout_work);
+}
+
+static void pretimeout_sync(struct work_struct *unused)
+{
+	sys_sync();
+}
+
 /*
  * Some TCO specific functions
  */
@@ -573,6 +613,8 @@ static int iTCO_wdt_start(void)
 
 	spin_lock(&iTCO_wdt_private.io_lock);
 
+	if (pretimeout)
+		mod_timer(&pretimeout_timer, jiffies + pretimeout * HZ);
 	iTCO_vendor_pre_start(iTCO_wdt_private.ACPIBASE, heartbeat);
 
 	/* disable chipset's NO_REBOOT bit */
@@ -608,6 +650,8 @@ static int iTCO_wdt_stop(void)
 
 	spin_lock(&iTCO_wdt_private.io_lock);
 
+	if (pretimeout)
+		del_timer(&pretimeout_timer);
 	iTCO_vendor_pre_stop(iTCO_wdt_private.ACPIBASE);
 
 	/* Bit 11: TCO Timer Halt -> 1 = The TCO timer is disabled */
@@ -630,6 +674,8 @@ static int iTCO_wdt_keepalive(void)
 {
 	spin_lock(&iTCO_wdt_private.io_lock);
 
+	if (pretimeout)
+		mod_timer(&pretimeout_timer, jiffies + pretimeout * HZ);
 	iTCO_vendor_pre_keepalive(iTCO_wdt_private.ACPIBASE, heartbeat);
 
 	/* Reload the timer by writing to the TCO Timer Counter register */
@@ -731,6 +777,8 @@ static int iTCO_wdt_get_timeleft(int *time_left)
 
 static int iTCO_wdt_open(struct inode *inode, struct file *file)
 {
+	unsigned long flags;
+
 	/* /dev/watchdog can only be opened once */
 	if (test_and_set_bit(0, &is_active))
 		return -EBUSY;
@@ -739,11 +787,16 @@ static int iTCO_wdt_open(struct inode *inode, struct file *file)
 	 *      Reload and activate timer
 	 */
 	iTCO_wdt_start();
+	spin_lock_irqsave(&iTCO_task_lock, flags);
+	pretimeout_task = current;
+	spin_unlock_irqrestore(&iTCO_task_lock, flags);
 	return nonseekable_open(inode, file);
 }
 
 static int iTCO_wdt_release(struct inode *inode, struct file *file)
 {
+	unsigned long flags;
+
 	/*
 	 *      Shut off the timer.
 	 */
@@ -754,6 +807,9 @@ static int iTCO_wdt_release(struct inode *inode, struct file *file)
 			"Unexpected close, not stopping watchdog!\n");
 		iTCO_wdt_keepalive();
 	}
+	spin_lock_irqsave(&iTCO_task_lock, flags);
+	pretimeout_task = NULL;
+	spin_unlock_irqrestore(&iTCO_task_lock, flags);
 	clear_bit(0, &is_active);
 	expect_release = 0;
 	return 0;
@@ -792,7 +848,7 @@ static long iTCO_wdt_ioctl(struct file *file, unsigned int cmd,
 							unsigned long arg)
 {
 	int new_options, retval = -EINVAL;
-	int new_heartbeat;
+	int new_heartbeat, new_delta;
 	void __user *argp = (void __user *)arg;
 	int __user *p = argp;
 	static const struct watchdog_info ident = {
@@ -830,10 +886,21 @@ static long iTCO_wdt_ioctl(struct file *file, unsigned int cmd,
 		iTCO_wdt_keepalive();
 		return 0;
 
+	case WDIOC_SETPRETIMEOUT:
+		if (get_user(new_delta, p))
+			return -EFAULT;
+		if (set_pretimeout(new_delta, heartbeat))
+			return -EINVAL;
+		/* Fall through */
+	case WDIOC_GETPRETIMEOUT:
+		return put_user(pretimeout_delta, p);
+
 	case WDIOC_SETTIMEOUT:
 	{
 		if (get_user(new_heartbeat, p))
 			return -EFAULT;
+		if (set_pretimeout(pretimeout_delta, new_heartbeat))
+			return -EINVAL;
 		if (iTCO_wdt_set_heartbeat(new_heartbeat))
 			return -EINVAL;
 		iTCO_wdt_keepalive();
