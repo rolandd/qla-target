@@ -43,11 +43,13 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 	uint16_t __iomem *optr;
 	uint32_t	cnt;
 	uint32_t	mboxes;
+	unsigned long	start_time;
 	unsigned long	wait_time;
 	struct qla_hw_data *ha = vha->hw;
 	scsi_qla_host_t *base_vha = pci_get_drvdata(ha->pdev);
 
 	ql_dbg(ql_dbg_mbx, base_vha, 0x1000, "Entered %s.\n", __func__);
+	start_time = jiffies;
 
 	if (ha->pdev->error_state > pci_channel_io_frozen) {
 		ql_log(ql_log_warn, base_vha, 0x1001,
@@ -268,13 +270,19 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 			mb0 = RD_MAILBOX_REG(ha, &reg->isp, 0);
 			ictrl = RD_REG_WORD(&reg->isp.ictrl);
 		}
-		ql_dbg(ql_dbg_mbx + ql_dbg_buffer, base_vha, 0x1119,
-		    "MBX Command timeout for cmd %x.\n", command);
-		ql_dbg(ql_dbg_mbx + ql_dbg_buffer, base_vha, 0x111a,
-		    "iocontrol=%x jiffies=%lx.\n", ictrl, jiffies);
-		ql_dbg(ql_dbg_mbx + ql_dbg_buffer, base_vha, 0x111b,
-		    "mb[0] = 0x%x.\n", mb0);
+		printk(KERN_ERR "MBX Command timeout for cmd 0x%x.\n", command);
+		printk(KERN_ERR "iocontrol=0x%x jiffies=%ld (start=%ld).\n", ictrl, jiffies,
+		       start_time);
+		printk(KERN_ERR "mb[0] = 0x%x.\n", mb0);
 		ql_dump_regs(ql_dbg_mbx + ql_dbg_buffer, base_vha, 0x1019);
+
+		if (command != MBC_GEN_SYSTEM_ERROR) {
+			/*
+			 * Attempt to capture a firmware dump for further analysis
+			 * of the current firmware state
+			 */
+			ha->isp_ops->fw_dump(vha, 0);
+		}
 
 		rval = QLA_FUNCTION_TIMEOUT;
 	}
