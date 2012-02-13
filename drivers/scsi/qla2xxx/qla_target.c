@@ -1303,7 +1303,8 @@ static int __qla_tgt_24xx_handle_abts(struct scsi_qla_host *vha,
 	mcmd->sess = sess;
 	memcpy(&mcmd->orig_iocb.abts, abts, sizeof(mcmd->orig_iocb.abts));
 
-	rc = ha->tgt_ops->handle_tmr(mcmd, 0, ABORT_TASK);
+	rc = ha->tgt_ops->handle_tmr(mcmd, 0, TMR_ABORT_TASK,
+				abts->exchange_addr_to_abort);
 	if (rc != 0) {
 		printk(KERN_ERR "qla_target(%d):  tgt_ops->handle_tmr()"
 				" failed: %d", vha->vp_idx, rc);
@@ -1441,7 +1442,7 @@ void qla_tgt_xmit_tm_rsp(struct qla_tgt_mgmt_cmd *mcmd)
 	unsigned long flags;
 
 	ql_dbg(ql_dbg_tgt_mgt, vha, 0xe116, "TM response mcmd"
-		" (%p) status %#x state %#x", mcmd, mcmd->se_tmr_req->response,
+		" (%p) status %#x state %#x", mcmd, mcmd->fc_tm_rsp,
 		mcmd->flags);
 
 	spin_lock_irqsave(&ha->hardware_lock, flags);
@@ -1449,7 +1450,7 @@ void qla_tgt_xmit_tm_rsp(struct qla_tgt_mgmt_cmd *mcmd)
 		qla_tgt_send_notify_ack(vha, &mcmd->orig_iocb.imm_ntfy,
 			0, 0, 0, 0, 0, 0);
 	else {
-		if (mcmd->se_tmr_req->function == ABORT_TASK)
+		if (mcmd->se_tmr_req->function == TMR_ABORT_TASK)
 			qla_tgt_24xx_send_abts_resp(vha, &mcmd->orig_iocb.abts,
 				mcmd->fc_tm_rsp, false);
 		else
@@ -2853,7 +2854,7 @@ static int qla_tgt_issue_task_mgmt(struct qla_tgt_sess *sess, uint32_t lun,
 		return -ENOSYS;
 	}
 
-	res = ha->tgt_ops->handle_tmr(mcmd, lun, tmr_func);
+	res = ha->tgt_ops->handle_tmr(mcmd, lun, tmr_func, 0);
 	if (res != 0) {
 		printk(KERN_ERR "qla_target(%d): tgt_ops->handle_tmr() failed: %d\n",
 			    sess->vha->vp_idx, res);
@@ -2916,7 +2917,6 @@ static int __qla_tgt_abort_task(struct scsi_qla_host *vha,
 	struct qla_tgt_mgmt_cmd *mcmd;
 	uint32_t lun, unpacked_lun;
 	int rc;
-	uint16_t tag;
 
 	mcmd = mempool_alloc(qla_tgt_mgmt_cmd_mempool, GFP_ATOMIC);
 	if (mcmd == NULL) {
@@ -2929,12 +2929,11 @@ static int __qla_tgt_abort_task(struct scsi_qla_host *vha,
 	mcmd->sess = sess;
 	memcpy(&mcmd->orig_iocb.imm_ntfy, iocb, sizeof(mcmd->orig_iocb.imm_ntfy));
 
-	tag = le16_to_cpu(iocb->u.isp2x.seq_id);
-
 	lun = a->u.isp24.fcp_cmnd.lun;
 	unpacked_lun = scsilun_to_int((struct scsi_lun *)&lun);
 
-	rc = ha->tgt_ops->handle_tmr(mcmd, unpacked_lun, ABORT_TASK);
+	rc = ha->tgt_ops->handle_tmr(mcmd, unpacked_lun, TMR_ABORT_TASK,
+				le16_to_cpu(iocb->u.isp2x.seq_id));
 	if (rc != 0) {
 		printk(KERN_ERR "qla_target(%d): tgt_ops->handle_tmr()"
 			" failed: %d\n", vha->vp_idx, rc);
