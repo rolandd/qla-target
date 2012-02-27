@@ -644,6 +644,8 @@ struct qla_tgt_func_tmpl {
 						const uint16_t);
 	struct qla_tgt_sess *(*find_sess_by_s_id)(struct scsi_qla_host *,
 						const uint8_t *);
+	void (*clear_nacl_from_fcport_map)(struct qla_tgt_sess *);
+	int (*put_sess)(struct qla_tgt_sess *);
 };
 
 int qla2x00_wait_for_hba_online(struct scsi_qla_host *);
@@ -810,13 +812,12 @@ struct qla_tgt_sess {
 	struct scsi_qla_host *vha;
 	struct qla_tgt *tgt;
 
-	struct kref sess_kref;
-
 	struct list_head sess_list_entry;
 	unsigned long expires;
 	struct list_head del_list_entry;
 
 	uint8_t port_name[WWN_SIZE];
+	struct work_struct free_work;
 };
 
 struct qla_tgt_cmd {
@@ -929,7 +930,8 @@ extern int qla_tgt_add_target(struct qla_hw_data *, struct scsi_qla_host *);
 extern int qla_tgt_remove_target(struct qla_hw_data *, struct scsi_qla_host *);
 extern int qla_tgt_lport_register(struct qla_tgt_func_tmpl *, u64,
 			int (*callback)(struct scsi_qla_host *), void *);
-extern void  qla_tgt_lport_deregister(struct scsi_qla_host *);
+extern void qla_tgt_lport_deregister(struct scsi_qla_host *);
+extern void qla_tgt_unreg_sess(struct qla_tgt_sess *);
 extern void qla_tgt_fc_port_added(struct scsi_qla_host *, fc_port_t *);
 extern void qla_tgt_fc_port_deleted(struct scsi_qla_host *, fc_port_t *);
 extern void qla_tgt_set_mode(struct scsi_qla_host *ha);
@@ -966,7 +968,6 @@ extern int qla_tgt_xmit_response(struct qla_tgt_cmd *, int, uint8_t);
 extern void qla_tgt_xmit_tm_rsp(struct qla_tgt_mgmt_cmd *);
 extern void qla_tgt_free_mcmd(struct qla_tgt_mgmt_cmd *);
 extern void qla_tgt_free_cmd(struct qla_tgt_cmd *cmd);
-extern int __qla_tgt_sess_put(struct qla_tgt_sess *);
 extern void qla_tgt_dump_error_ctio(struct scsi_qla_host *vha, uint32_t handle, void *ctio);
 extern void qla_tgt_ctio_completion(struct scsi_qla_host *, uint32_t);
 extern void qla_tgt_async_event(uint16_t, struct scsi_qla_host *, uint16_t *);
