@@ -2920,7 +2920,11 @@ SYSCALL_DEFINE3(init_module, void __user *, umod,
 				     MODULE_STATE_LIVE, mod);
 
 	/* We need to finish all async code before the module init sequence is done */
+	printk("sys_init_module: Waiting for umod=%p, len=%lu, uargs=%p\n",
+	       umod, len, uargs);
 	async_synchronize_full();
+	printk("sys_init_module: Done with umod=%p, len=%lu, uargs=%p\n",
+	       umod, len, uargs);
 
 	mutex_lock(&module_mutex);
 	/* Drop initial reference. */
