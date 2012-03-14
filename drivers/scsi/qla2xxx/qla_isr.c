@@ -1284,7 +1284,6 @@ qla24xx_tm_iocb_entry(scsi_qla_host_t *vha, struct req_que *req,
 {
 	const char func[] = "TMF-IOCB";
 	const char *type;
-	fc_port_t *fcport;
 	srb_t *sp;
 	struct srb_iocb *iocb;
 	struct srb_ctx *ctx;
@@ -1298,7 +1297,6 @@ qla24xx_tm_iocb_entry(scsi_qla_host_t *vha, struct req_que *req,
 	ctx = sp->ctx;
 	iocb = ctx->u.iocb_cmd;
 	type = ctx->name;
-	fcport = sp->fcport;
 
 	if (sts->entry_status) {
 		ql_log(ql_log_warn, vha, 0x5038,

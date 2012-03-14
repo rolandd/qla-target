@@ -2409,7 +2409,6 @@ static void qla_tgt_do_ctio_completion(struct scsi_qla_host *vha, uint32_t handl
 {
 	struct qla_hw_data *ha = vha->hw;
 	struct se_cmd *se_cmd;
-	struct target_core_fabric_ops *tfo;
 	struct qla_tgt_cmd *cmd;
 
 	ql_dbg(ql_dbg_tgt_pkt, vha, 0xe206, "qla_target(%d): handle(ctio %p status"
@@ -2431,7 +2430,6 @@ static void qla_tgt_do_ctio_completion(struct scsi_qla_host *vha, uint32_t handl
 		return;
 	}
 	se_cmd = &cmd->se_cmd;
-	tfo = se_cmd->se_tfo;
 
 	if (cmd->sg_mapped)
 		qla_tgt_unmap_sg(vha, cmd);
@@ -2817,7 +2815,7 @@ static int qla_tgt_handle_task_mgmt(struct scsi_qla_host *vha, void *iocb)
 	struct qla_tgt *tgt;
 	struct qla_tgt_sess *sess;
 	uint32_t lun, unpacked_lun;
-	int lun_size, fn, res = 0;
+	int fn, res = 0;
 
 	tgt = ha->qla_tgt;
 	if (tgt->tgt_stop) {
@@ -2827,7 +2825,6 @@ static int qla_tgt_handle_task_mgmt(struct scsi_qla_host *vha, void *iocb)
 
 
 	lun = a->u.isp24.fcp_cmnd.lun;
-	lun_size = sizeof(a->u.isp24.fcp_cmnd.lun);
 	fn = a->u.isp24.fcp_cmnd.task_mgmt_flags;
 	sess = ha->tgt_ops->find_sess_by_s_id(vha,
 				a->u.isp24.fcp_hdr.s_id);
@@ -4076,7 +4073,7 @@ static void qla_tgt_tmr_work(struct qla_tgt *tgt,
 	uint8_t *s_id = NULL; /* to hide compiler warnings */
 	int rc, loop_id = -1; /* to hide compiler warnings */
 	uint32_t lun, unpacked_lun;
-	int lun_size, fn;
+	int fn;
 	void *iocb;
 
 	spin_lock_irqsave(&ha->hardware_lock, flags);
@@ -4105,7 +4102,6 @@ static void qla_tgt_tmr_work(struct qla_tgt *tgt,
 
 	iocb = a;
 	lun = a->u.isp24.fcp_cmnd.lun;
-	lun_size = sizeof(lun);
 	fn = a->u.isp24.fcp_cmnd.task_mgmt_flags;
 	unpacked_lun = scsilun_to_int((struct scsi_lun *)&lun);
 
