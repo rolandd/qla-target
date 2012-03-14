@@ -3273,7 +3273,6 @@ qla82xx_start_iocbs(srb_t *sp)
 {
 	struct qla_hw_data *ha = sp->fcport->vha->hw;
 	struct req_que *req = ha->req_q_map[0];
-	struct device_reg_82xx __iomem *reg;
 	uint32_t dbval;
 
 	/* Adjust ring index. */
@@ -3284,7 +3283,6 @@ qla82xx_start_iocbs(srb_t *sp)
 	} else
 		req->ring_ptr++;
 
-	reg = &ha->iobase->isp82;
 	dbval = 0x04 | (ha->portnum << 5);
 
 	dbval = dbval | (req->id << 8) | (req->ring_index << 16);

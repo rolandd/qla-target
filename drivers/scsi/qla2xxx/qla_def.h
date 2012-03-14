@@ -2357,11 +2357,7 @@ struct qla_statistics {
 #define QLA_QUE_PAGE 0X1000
 #define QLA_MQ_SIZE 32
 #define QLA_MAX_QUEUES 256
-#define ISP_QUE_REG(ha, id) \
-	((ha->mqenable) ? \
-	((void *)(ha->mqiobase) +\
-	(QLA_QUE_PAGE * id)) :\
-	((void *)(ha->iobase)))
+
 #define QLA_REQ_QUE_ID(tag) \
 	((tag < QLA_MAX_QUEUES && tag > 0) ? tag : 0)
 #define QLA_DEFAULT_QUE_QOS 5
@@ -2885,6 +2881,14 @@ struct qla_hw_data {
 	uint32_t tgt_controller_index;
 	char irq_name[3][40];
 };
+
+static inline device_reg_t __iomem *ISP_QUE_REG(struct qla_hw_data *ha, u16 id)
+{
+	if (ha->mqenable)
+		return (void *)ha->mqiobase + (QLA_QUE_PAGE * id);
+	else
+		return (void *)ha->iobase;
+}
 
 /*
  * Qlogic scsi host structure
