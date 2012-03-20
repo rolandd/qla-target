@@ -44,6 +44,7 @@
 #include <linux/netpoll.h>
 #include <linux/inet.h>
 #include <linux/configfs.h>
+#include <linux/rtnetlink.h>
 
 MODULE_AUTHOR("Maintainer: Matt Mackall <mpm@selenic.com>");
 MODULE_DESCRIPTION("Console driver for network interfaces");
@@ -55,6 +56,10 @@ MODULE_LICENSE("GPL");
 static char config[MAX_PARAM_LENGTH];
 module_param_string(netconsole, config, MAX_PARAM_LENGTH, 0);
 MODULE_PARM_DESC(netconsole, " netconsole=[src-port]@[src-ip]/[dev],[tgt-port]@<tgt-ip>/[tgt-macaddr]");
+
+static bool wait_for_devices = true;
+module_param(wait_for_devices, bool, 0644);
+MODULE_PARM_DESC(wait_for_devices, "netconsole support for devices registering after module load");
 
 #ifndef	MODULE
 static int __init option_setup(char *opt)
@@ -81,6 +86,7 @@ static DEFINE_SPINLOCK(target_list_lock);
  *		whether the corresponding netpoll is active or inactive.
  *		Also, other parameters of a target may be modified at
  *		runtime only when it is disabled (enabled == 0).
+ * @pending:	true if we haven't yet called __netpoll_setup() on this dvice.
  * @np:		The netpoll structure for this target.
  *		Contains the other userspace visible parameters:
  *		dev_name	(read-write)
@@ -97,6 +103,7 @@ struct netconsole_target {
 	struct config_item	item;
 #endif
 	int			enabled;
+	bool			pending;
 	struct netpoll		np;
 };
 
@@ -158,6 +165,33 @@ static void netconsole_target_put(struct netconsole_target *nt)
 
 #endif	/* CONFIG_NETCONSOLE_DYNAMIC */
 
+/* rtnl_lock() held on entry */
+static int __enable_target(struct netconsole_target * nt, struct net_device *nd)
+{
+	int rc;
+
+	if (!netif_running(nd)) {
+		printk(KERN_INFO "netconsole: device %s not up yet, forcing "
+		       "it\n", nd->name);
+		rc = dev_open(nd);
+		if (rc) {
+			printk(KERN_ERR "netconsole: failed to open %s\n",
+			       nd->name);
+			return rc;
+		}
+	}
+
+	nt->np.dev = nd;
+	rc = __netpoll_setup(&nt->np);
+	if (rc) {
+		nt->np.dev = NULL;
+		return rc;
+	}
+	nt->enabled = 1;
+	dev_hold(nd);
+	return 0;
+}
+
 /* Allocate new target (from boot/module param) and setup netpoll for it */
 static struct netconsole_target *alloc_param_target(char *target_config)
 {
@@ -185,11 +219,7 @@ static struct netconsole_target *alloc_param_target(char *target_config)
 	if (err)
 		goto fail;
 
-	err = netpoll_setup(&nt->np);
-	if (err)
-		goto fail;
-
-	nt->enabled = 1;
+	nt->pending = true;
 
 	return nt;
 
@@ -671,19 +701,25 @@ static int netconsole_netdev_event(struct notifier_block *this,
 	struct net_device *dev = ptr;
 	bool stopped = false;
 
-	if (!(event == NETDEV_CHANGENAME || event == NETDEV_UNREGISTER ||
-	      event == NETDEV_BONDING_DESLAVE || event == NETDEV_GOING_DOWN))
-		goto done;
-
 	spin_lock_irqsave(&target_list_lock, flags);
 restart:
 	list_for_each_entry(nt, &target_list, list) {
 		netconsole_target_get(nt);
-		if (nt->np.dev == dev) {
+
+		if (nt->pending && !strcmp(dev->name, nt->np.dev_name) &&
+		    event == NETDEV_REGISTER) {
+			nt->pending = false;
+			spin_unlock_irqrestore(&target_list_lock, flags);
+			__enable_target(nt, dev);
+			netconsole_target_put(nt);
+			return NOTIFY_DONE;
+
+		} else if (nt->np.dev == dev) {
 			switch (event) {
 			case NETDEV_CHANGENAME:
 				strlcpy(nt->np.dev_name, dev->name, IFNAMSIZ);
 				break;
+
 			case NETDEV_UNREGISTER:
 				/*
 				 * rtnl_lock already held
@@ -716,7 +752,6 @@ restart:
 			"interface %s as it %s\n",  dev->name,
 			event == NETDEV_UNREGISTER ? "unregistered" : "released slaves");
 
-done:
 	return NOTIFY_DONE;
 }
 
@@ -791,6 +826,32 @@ static int __init init_netconsole(void)
 	err = register_netdevice_notifier(&netconsole_netdev_notifier);
 	if (err)
 		goto fail;
+
+	/* Now the notifier is registered scan for existing devices */
+	rtnl_lock();
+	spin_lock_irqsave(&target_list_lock, flags);
+restart:
+	list_for_each_entry(nt, &target_list, list) {
+		if (nt->pending) {
+			struct net_device * nd = __dev_get_by_name(
+				&init_net, nt->np.dev_name);
+			if (nd) {
+				nt->pending = false;
+				spin_unlock_irqrestore(&target_list_lock,
+						       flags);
+				__enable_target(nt, nd);
+				spin_lock_irqsave(&target_list_lock, flags);
+				goto restart;
+			} else if (wait_for_devices) {
+				printk(KERN_INFO "netconsole: waiting for %s "
+				       "to arrive\n", nt->np.dev_name);
+			} else {
+				nt->pending = false;
+			}
+		}
+	}
+	spin_unlock_irqrestore(&target_list_lock, flags);
+	rtnl_unlock();
 
 	err = dynamic_netconsole_init();
 	if (err)
