@@ -70,6 +70,8 @@ static int __init option_setup(char *opt)
 __setup("netconsole=", option_setup);
 #endif	/* MODULE */
 
+static void console_init(void);
+
 /* Linked list of all configured targets */
 static LIST_HEAD(target_list);
 
@@ -382,6 +384,7 @@ static ssize_t store_enabled(struct netconsole_target *nt,
 			return err;
 
 		printk(KERN_INFO "netconsole: network logging started\n");
+		console_init();
 
 	} else {	/* 0 */
 		netpoll_cleanup(&nt->np);
@@ -720,6 +723,15 @@ restart:
 				strlcpy(nt->np.dev_name, dev->name, IFNAMSIZ);
 				break;
 
+			case NETDEV_UP:
+			case NETDEV_CHANGE:
+				spin_unlock_irqrestore(&target_list_lock, flags);
+				if (netif_carrier_ok(dev)) {
+					console_init();
+				}
+				netconsole_target_put(nt);
+				return NOTIFY_DONE;
+
 			case NETDEV_UNREGISTER:
 				/*
 				 * rtnl_lock already held
@@ -799,6 +811,25 @@ static struct console netconsole = {
 	.write	= write_msg,
 };
 
+static bool netconsole_started = false;
+
+static void console_init(void)
+{
+	if (!xchg(&netconsole_started, true)) {
+		register_console(&netconsole);
+		printk(KERN_INFO "netconsole: network logging started\n");
+	}
+}
+
+static void console_fini(void)
+{
+	/* Leave netconsole_started set since we may be racing with
+	 * netconsole_netdev_event(NETDEV_CHANGE) calling console_init() */
+	if (netconsole_started) {
+		unregister_console(&netconsole);
+	}
+}
+
 static int __init init_netconsole(void)
 {
 	int err;
@@ -806,6 +837,7 @@ static int __init init_netconsole(void)
 	unsigned long flags;
 	char *target_config;
 	char *input = config;
+	bool link_present = false;
 
 	if (strnlen(input, MAX_PARAM_LENGTH)) {
 		while ((target_config = strsep(&input, ";"))) {
@@ -840,6 +872,8 @@ restart:
 				spin_unlock_irqrestore(&target_list_lock,
 						       flags);
 				__enable_target(nt, nd);
+				if (netif_carrier_ok(nd))
+					link_present = true;
 				spin_lock_irqsave(&target_list_lock, flags);
 				goto restart;
 			} else if (wait_for_devices) {
@@ -857,8 +891,9 @@ restart:
 	if (err)
 		goto undonotifier;
 
-	register_console(&netconsole);
-	printk(KERN_INFO "netconsole: network logging started\n");
+	if (link_present) {
+		console_init();
+	}
 
 	return err;
 
@@ -885,7 +920,7 @@ static void __exit cleanup_netconsole(void)
 {
 	struct netconsole_target *nt, *tmp;
 
-	unregister_console(&netconsole);
+	console_fini();
 	dynamic_netconsole_exit();
 	unregister_netdevice_notifier(&netconsole_netdev_notifier);
 

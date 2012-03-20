@@ -51,9 +51,6 @@ static atomic_t trapped;
 static void zap_completion_queue(void);
 static void arp_reply(struct sk_buff *skb);
 
-static unsigned int carrier_timeout = 4;
-module_param(carrier_timeout, uint, 0644);
-
 static void queue_process(struct work_struct *work)
 {
 	struct netpoll_info *npinfo =
@@ -817,43 +814,14 @@ int netpoll_setup(struct netpoll *np)
 	}
 
 	if (!netif_running(ndev)) {
-		unsigned long atmost, atleast;
-
 		printk(KERN_INFO "%s: device %s not up yet, forcing it\n",
 		       np->name, np->dev_name);
 
-		rtnl_lock();
 		err = dev_open(ndev);
-		rtnl_unlock();
-
 		if (err) {
 			printk(KERN_ERR "%s: failed to open %s\n",
 			       np->name, ndev->name);
 			goto put;
-		}
-
-		atleast = jiffies + HZ/10;
-		atmost = jiffies + carrier_timeout * HZ;
-		while (!netif_carrier_ok(ndev)) {
-			if (time_after(jiffies, atmost)) {
-				printk(KERN_NOTICE
-				       "%s: timeout waiting for carrier\n",
-				       np->name);
-				break;
-			}
-			msleep(1);
-		}
-
-		/* If carrier appears to come up instantly, we don't
-		 * trust it and pause so that we don't pump all our
-		 * queued console messages into the bitbucket.
-		 */
-
-		if (time_before(jiffies, atleast)) {
-			printk(KERN_NOTICE "%s: carrier detect appears"
-			       " untrustworthy, waiting 4 seconds\n",
-			       np->name);
-			msleep(4000);
 		}
 	}
 
