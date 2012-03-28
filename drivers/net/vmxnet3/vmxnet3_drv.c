@@ -1689,9 +1689,7 @@ vmxnet3_netpoll(struct net_device *netdev)
 	if (adapter->intr.mask_mode == VMXNET3_IMM_ACTIVE)
 		vmxnet3_disable_all_intrs(adapter);
 
-	vmxnet3_do_poll(adapter, adapter->rx_queue[0].rx_ring[0].size);
-	vmxnet3_enable_all_intrs(adapter);
-
+	napi_schedule(&adapter->rx_queue[0].napi);
 }
 #endif	/* CONFIG_NET_POLL_CONTROLLER */
 
