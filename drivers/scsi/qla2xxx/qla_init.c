@@ -1276,6 +1276,8 @@ qla2x00_alloc_fw_dump(scsi_qla_host_t *vha)
 		    sizeof(uint32_t);
 		if (ha->mqenable)
 			mq_size = sizeof(struct qla2xxx_mq_chain);
+		if (ha->atio_q_length)
+			mq_size += ha->atio_q_length * sizeof(request_t);
 		/* Allocate memory for Fibre Channel Event Buffer. */
 		if (!IS_QLA25XX(ha) && !IS_QLA81XX(ha))
 			goto try_eft;
