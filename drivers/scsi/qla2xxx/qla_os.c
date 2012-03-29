@@ -3686,6 +3686,16 @@ qla2x00_do_dpc(void *data)
 			clear_bit(FCPORT_UPDATE_NEEDED, &base_vha->dpc_flags);
 		}
 
+		if (test_bit(SCR_PENDING, &base_vha->dpc_flags)) {
+			int ret;
+			ret = qla2x00_send_change_request(base_vha, 0x3, 0);
+			if (ret != QLA_SUCCESS)
+				ql_log(ql_log_info, base_vha, 0x121,
+				    "Failed to enable receiving of RSCN "
+				    "requests: 0x%x.\n", ret);
+			clear_bit(SCR_PENDING, &base_vha->dpc_flags);
+		}
+
 		if (test_bit(ISP_QUIESCE_NEEDED, &base_vha->dpc_flags)) {
 			ql_dbg(ql_dbg_dpc, base_vha, 0x4009,
 			    "Quiescence mode scheduled.\n");

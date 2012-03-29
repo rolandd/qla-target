@@ -2939,6 +2939,7 @@ typedef struct scsi_qla_host {
 #define FCOE_CTX_RESET_NEEDED	18	/* Initiate FCoE context reset */
 #define MPI_RESET_NEEDED	19	/* Initiate MPI FW reset */
 #define ISP_QUIESCE_NEEDED	20	/* Driver need some quiescence */
+#define SCR_PENDING		21	/* SCR in target mode */
 
 	uint32_t	device_flags;
 #define SWITCH_FOUND		BIT_0

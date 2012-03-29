@@ -3195,13 +3195,6 @@ qla2x00_send_change_request(scsi_qla_host_t *vha, uint16_t format,
 
 	ql_dbg(ql_dbg_mbx, vha, 0x10c7, "Entered %s.\n", __func__);
 
-	/*
-	 * This command is implicitly executed by firmware during login for the
-	 * physical hosts
-	 */
-	if (vp_idx == 0)
-		return QLA_FUNCTION_FAILED;
-
 	mcp->mb[0] = MBC_SEND_CHANGE_REQUEST;
 	mcp->mb[1] = format;
 	mcp->mb[9] = vp_idx;

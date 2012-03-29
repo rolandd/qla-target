@@ -697,6 +697,9 @@ skip_rio:
 
 		vha->flags.rscn_queue_overflow = 1;
 
+		if (vha->vp_idx == 0 && !qla_ini_mode_enabled(vha))
+			set_bit(SCR_PENDING, &vha->dpc_flags);
+
 		set_bit(LOOP_RESYNC_NEEDED, &vha->dpc_flags);
 		set_bit(LOCAL_LOOP_UPDATE, &vha->dpc_flags);
 
