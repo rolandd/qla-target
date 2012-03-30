@@ -823,8 +823,6 @@ struct qla_tgt_sess {
 
 struct qla_tgt_cmd {
 	struct qla_tgt_sess *sess;
-	u64 recv_time;
-	u64 ctio_time;
 	int state;
 	struct se_cmd se_cmd;
 	struct work_struct free_work;

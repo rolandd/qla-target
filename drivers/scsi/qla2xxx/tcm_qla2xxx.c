@@ -588,18 +588,15 @@ void tcm_qla2xxx_dump_cmd(struct se_cmd *se_cmd)
 {
 	struct qla_tgt_cmd *cmd = container_of(se_cmd, struct qla_tgt_cmd, se_cmd);
 	atio_from_isp_t *atio = &cmd->atio;
-	unsigned long long tr = cmd->recv_time;
-	unsigned long rr = do_div(tr, 1000000000);
-	unsigned long long tc = cmd->ctio_time;
-	unsigned long rc = do_div(tc, 1000000000);
+	struct timeval r = ktime_to_timeval(cmd->se_cmd.recv_time);
+	struct timeval t = ktime_to_timeval(cmd->se_cmd.ctio_time);
 
 	pr_info("se_cmd %p / cmd %p  exchange addr %08x s_id %x:%x:%x (recv time %5lu.%06lu ctio time %5lu.%06lu)\n",
 		se_cmd, cmd, atio->u.isp24.exchange_addr,
 		atio->u.isp24.fcp_hdr.s_id[0],
 		atio->u.isp24.fcp_hdr.s_id[1],
 		atio->u.isp24.fcp_hdr.s_id[2],
-		(unsigned long) tr, rr,
-		(unsigned long) tc, rc);
+		r.tv_sec, r.tv_usec, t.tv_sec, t.tv_usec);
 	pr_info("ATIO: \n");
 	print_hex_dump(KERN_INFO, "  ", DUMP_PREFIX_OFFSET, 16, 1, &cmd->atio, 64, 0);
 	pr_info("CDB: ");

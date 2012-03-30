@@ -1985,6 +1985,7 @@ int qla_tgt_xmit_response(struct qla_tgt_cmd *cmd, int xmit_type, uint8_t scsi_s
 	struct qla_tgt_prm prm;
 	uint32_t full_req_cnt = 0;
 	unsigned long flags = 0;
+	struct timespec tod;
 	int res;
 
 	memset(&prm, 0, sizeof(prm));
@@ -2066,7 +2067,8 @@ int qla_tgt_xmit_response(struct qla_tgt_cmd *cmd, int xmit_type, uint8_t scsi_s
 
 
 	cmd->state = QLA_TGT_STATE_PROCESSED; /* Mid-level is done processing */
-	cmd->ctio_time = local_clock();
+	ktime_get_ts(&tod);
+	cmd->se_cmd.ctio_time = timespec_to_ktime(tod);
 
 	ql_dbg(ql_dbg_tgt, vha, 0xe01a, "Xmitting CTIO7 response pkt for 24xx:"
 			" %p scsi_status: 0x%02x\n", pkt, scsi_status);
@@ -2690,6 +2692,7 @@ static int qla_tgt_handle_cmd_for_atio(struct scsi_qla_host *vha,
 	struct qla_hw_data *ha = vha->hw;
 	struct qla_tgt *tgt = ha->qla_tgt;
 	struct qla_tgt_cmd *cmd;
+	struct timespec tod;
 
 	if (unlikely(tgt->tgt_stop)) {
 		ql_dbg(ql_dbg_tgt_mgt, vha, 0xe124, "New command while device %p"
@@ -2704,8 +2707,8 @@ static int qla_tgt_handle_cmd_for_atio(struct scsi_qla_host *vha,
 		return -ENOMEM;
 	}
 
-	cmd->recv_time = local_clock();
-
+	ktime_get_ts(&tod);
+	cmd->se_cmd.recv_time = timespec_to_ktime(tod);
 	cmd->se_cmd.original_cpu = transport_buddy_cpu();
 	INIT_LIST_HEAD(&cmd->cmd_list);
 

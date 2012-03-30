@@ -541,6 +541,9 @@ struct se_cmd {
 	unsigned		check_release:1;
 	unsigned		cmd_wait_set:1;
 	unsigned		unknown_data_length:1;
+	/* Timestamps moved from qla_target.h */
+	ktime_t			recv_time;
+	ktime_t			ctio_time;
 	/* See se_cmd_flags_table */
 	u32			se_cmd_flags;
 	u32			se_ordered_id;
