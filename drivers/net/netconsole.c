@@ -749,7 +749,6 @@ restart:
 					goto restart;
 				}
 				/* Fall through */
-			case NETDEV_GOING_DOWN:
 			case NETDEV_BONDING_DESLAVE:
 				nt->enabled = 0;
 				stopped = true;
