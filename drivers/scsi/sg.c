@@ -397,19 +397,15 @@ sg_read(struct file *filp, char __user *buf, size_t count, loff_t * ppos)
 			retval = -EAGAIN;
 			goto free_old_hdr;
 		}
-		while (1) {
-			retval = 0; /* following macro beats race condition */
-			__wait_event_interruptible(sfp->read_wait,
-				(sdp->detached ||
-				(srp = sg_get_rq_mark(sfp, req_pack_id))), 
-				retval);
-			if (sdp->detached) {
-				retval = -ENODEV;
-				goto free_old_hdr;
-			}
-			if (0 == retval)
-				break;
-
+		retval = 0; /* following macro beats race condition */
+		__wait_event_interruptible(sfp->read_wait,
+			(sdp->detached ||
+			(srp = sg_get_rq_mark(sfp, req_pack_id))), retval);
+		if (sdp->detached) {
+			retval = -ENODEV;
+			goto free_old_hdr;
+		}
+		if (retval) {
 			/* -ERESTARTSYS as signal hit process */
 			goto free_old_hdr;
 		}
