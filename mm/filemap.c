@@ -117,14 +117,29 @@
 void __delete_from_page_cache(struct page *page)
 {
 	struct address_space *mapping = page->mapping;
+	static unsigned long errors;
+	void **slot;
+	struct page*item = NULL;
+
+	slot = radix_tree_lookup_slot(&mapping->page_tree, page->index);
+	if (slot)
+	    item = radix_tree_deref_slot_protected(slot, &mapping->tree_lock);
 
 	radix_tree_delete(&mapping->page_tree, page->index);
+
+	/* limit the errors shown, but cover at least two radix_tree nodes */
+	if (page_mapped(page) || item != page) {
+		errors++;
+		printk(KERN_ALERT "BUG: Bad page %p deleted from slot %p\n", item, slot);
+		dump_page(page);
+		dump_stack();
+	}
+
 	page->mapping = NULL;
 	mapping->nrpages--;
 	__dec_zone_page_state(page, NR_FILE_PAGES);
 	if (PageSwapBacked(page))
 		__dec_zone_page_state(page, NR_SHMEM);
-	BUG_ON(page_mapped(page));
 
 	/*
 	 * Some filesystems seem to re-dirty the page even after
