@@ -1579,6 +1579,7 @@ static void scsi_request_fn(struct request_queue *q)
 	struct scsi_cmnd *cmd;
 	struct request *req;
 
+	WARN_ON(!irqs_disabled());
 	if (!sdev) {
 		printk("scsi: killing requests for dead queue\n");
 		while ((req = blk_peek_request(q)) != NULL)
@@ -1665,7 +1666,7 @@ static void scsi_request_fn(struct request_queue *q)
 		 * XXX(hch): This is rather suboptimal, scsi_dispatch_cmd will
 		 *		take the lock again.
 		 */
-		spin_unlock_irq(shost->host_lock);
+		spin_unlock(shost->host_lock);
 
 		/*
 		 * Finally, initialize any error handling parameters, and set up
@@ -1677,7 +1678,7 @@ static void scsi_request_fn(struct request_queue *q)
 		 * Dispatch the command to the low-level driver.
 		 */
 		rtn = scsi_dispatch_cmd(cmd);
-		spin_lock_irq(q->queue_lock);
+		spin_lock(q->queue_lock);
 		if (rtn)
 			goto out_delay;
 	}
@@ -1685,7 +1686,7 @@ static void scsi_request_fn(struct request_queue *q)
 	goto out;
 
  not_ready:
-	spin_unlock_irq(shost->host_lock);
+	spin_unlock(shost->host_lock);
 
 	/*
 	 * lock q, handle tag, requeue req, and decrement device_busy. We
@@ -1695,7 +1696,7 @@ static void scsi_request_fn(struct request_queue *q)
 	 * cases (host limits or settings) should run the queue at some
 	 * later time.
 	 */
-	spin_lock_irq(q->queue_lock);
+	spin_lock(q->queue_lock);
 	blk_requeue_request(q, req);
 	sdev->device_busy--;
 out_delay:
@@ -1704,9 +1705,9 @@ out_delay:
 out:
 	/* must be careful here...if we trigger the ->remove() function
 	 * we cannot be holding the q lock */
-	spin_unlock_irq(q->queue_lock);
+	spin_unlock(q->queue_lock);
 	put_device(&sdev->sdev_gendev);
-	spin_lock_irq(q->queue_lock);
+	spin_lock(q->queue_lock);
 }
 
 u64 scsi_calculate_bounce_limit(struct Scsi_Host *shost)
