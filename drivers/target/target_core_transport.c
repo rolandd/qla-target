@@ -3446,6 +3446,16 @@ static void transport_free_dev_tasks(struct se_cmd *cmd)
 	spin_lock_irqsave(&cmd->t_state_lock, flags);
 	list_for_each_entry_safe(task, task_tmp,
 				&cmd->t_task_list, t_list) {
+		WARN(task->t_state_active,
+		     "t_task_cdbs: %d t_task_cdbs_left: %d"
+		     " t_task_cdbs_sent: %d -- CMD_T_ACTIVE: %d"
+		     " CMD_T_STOP: %d CMD_T_SENT: %d\n",
+		     cmd->t_task_list_num,
+		     atomic_read(&cmd->t_task_cdbs_left),
+		     atomic_read(&cmd->t_task_cdbs_sent),
+		     (cmd->transport_state & CMD_T_ACTIVE) != 0,
+		     (cmd->transport_state & CMD_T_STOP) != 0,
+		     (cmd->transport_state & CMD_T_SENT) != 0);
 		if (!(task->task_flags & TF_ACTIVE))
 			list_move_tail(&task->t_list, &dispose_list);
 	}
