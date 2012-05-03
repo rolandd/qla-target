@@ -468,14 +468,16 @@ static void qla_tgt_schedule_sess_for_deletion(struct qla_tgt_sess *sess, bool i
 
 	sess->expires = jiffies + dev_loss_tmo * HZ;
 
-	printk(KERN_INFO "qla_target(%d): session for port %02x:%02x:%02x:"
-		"%02x:%02x:%02x:%02x:%02x (loop ID %d) scheduled for "
-		"deletion in %u secs (expires: %lu) immed: %d\n", sess->vha->vp_idx,
-		sess->port_name[0], sess->port_name[1],
-		sess->port_name[2], sess->port_name[3],
-		sess->port_name[4], sess->port_name[5],
-		sess->port_name[6], sess->port_name[7],
-		sess->loop_id, dev_loss_tmo, sess->expires, immediate);
+	dev_info(&sess->vha->hw->pdev->dev,
+		 "qla_target(%d) host %lu: session for port %02x:%02x:%02x:"
+		 "%02x:%02x:%02x:%02x:%02x (loop ID %d) scheduled for "
+		 "deletion in %u secs (expires: %lu) immed: %d\n",
+		 sess->vha->vp_idx, tgt->vha->host_no,
+		 sess->port_name[0], sess->port_name[1],
+		 sess->port_name[2], sess->port_name[3],
+		 sess->port_name[4], sess->port_name[5],
+		 sess->port_name[6], sess->port_name[7],
+		 sess->loop_id, dev_loss_tmo, sess->expires, immediate);
 
 	if (immediate)
 		schedule_delayed_work(&tgt->sess_del_work, 0);
@@ -796,14 +798,15 @@ static struct qla_tgt_sess *qla_tgt_create_sess(
 	ha->qla_tgt->sess_count++;
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
-	printk(KERN_INFO "qla_target(%d): %ssession for wwn %02x:%02x:%02x:%02x:"
-		"%02x:%02x:%02x:%02x (loop_id %d, s_id %x:%x:%x, confirmed"
-		" completion %ssupported) added\n", vha->vp_idx, local ?
-		"local " : "", fcport->port_name[0], fcport->port_name[1],
-		fcport->port_name[2], fcport->port_name[3], fcport->port_name[4],
-		fcport->port_name[5], fcport->port_name[6], fcport->port_name[7],
-		fcport->loop_id, sess->s_id.b.domain, sess->s_id.b.area,
-		sess->s_id.b.al_pa, sess->conf_compl_supported ? "" : "not ");
+	dev_info(&ha->pdev->dev, "qla_target(%d) host %lu: %ssession for "
+		 "wwn %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x (loop_id "
+		 "%d, s_id %x:%x:%x, confirmed completion %ssupported) added\n",
+		 vha->vp_idx, vha->host_no, local ? "local " : "",
+		 fcport->port_name[0], fcport->port_name[1],
+		 fcport->port_name[2], fcport->port_name[3], fcport->port_name[4],
+		 fcport->port_name[5], fcport->port_name[6], fcport->port_name[7],
+		 fcport->loop_id, sess->s_id.b.domain, sess->s_id.b.area,
+		 sess->s_id.b.al_pa, sess->conf_compl_supported ? "" : "not ");
 
 	return sess;
 }
@@ -868,14 +871,14 @@ void qla_tgt_fc_port_added(struct scsi_qla_host *vha, fc_port_t *fcport)
 	}
 
 	if (sess && sess->local) {
-		printk(KERN_INFO "qla_target(%u): local session for "
-			"port %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x "
-			"(loop ID %d) became global\n", vha->vp_idx,
-			fcport->port_name[0], fcport->port_name[1],
-			fcport->port_name[2], fcport->port_name[3],
-			fcport->port_name[4], fcport->port_name[5],
-			fcport->port_name[6], fcport->port_name[7],
-			sess->loop_id);
+		dev_info(&ha->pdev->dev, "qla_target(%u) host %lu: local session for "
+			 "port %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x "
+			 "(loop ID %d) became global\n", vha->vp_idx, vha->host_no,
+			 fcport->port_name[0], fcport->port_name[1],
+			 fcport->port_name[2], fcport->port_name[3],
+			 fcport->port_name[4], fcport->port_name[5],
+			 fcport->port_name[6], fcport->port_name[7],
+			 sess->loop_id);
 		sess->local = 0;
 	}
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
@@ -3990,9 +3993,9 @@ retry:
 				" initiator with S_ID %x:%x:%x", s_id[0],
 				s_id[1], s_id[2]);
 		} else
-			printk(KERN_ERR "qla_target(%d): Unable to find "
+			dev_err(&vha->hw->pdev->dev, "qla_target(%d) host %lu: Unable to find "
 				"initiator with S_ID %x:%x:%x",
-				vha->vp_idx, s_id[0], s_id[1],
+				vha->vp_idx, vha->host_no, s_id[0], s_id[1],
 				s_id[2]);
 		return NULL;
 	}
