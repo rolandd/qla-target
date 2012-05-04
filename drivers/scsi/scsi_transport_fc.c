@@ -2696,6 +2696,14 @@ fc_remote_port_add(struct Scsi_Host *shost, int channel,
 	unsigned long flags;
 	int match = 0;
 
+	dev_dbg(&shost->shost_gendev, "fc_remote_port_add wwn "
+		"%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x port_id 0x%x roles %d\n",
+		((u8 *)&ids->port_name)[7], ((u8 *)&ids->port_name)[6],
+		((u8 *)&ids->port_name)[5], ((u8 *)&ids->port_name)[4],
+		((u8 *)&ids->port_name)[3], ((u8 *)&ids->port_name)[2],
+		((u8 *)&ids->port_name)[1], ((u8 *)&ids->port_name)[0],
+		ids->port_id, ids->roles);
+
 	/* ensure any stgt delete functions are done */
 	fc_flush_work(shost);
 
@@ -2728,6 +2736,9 @@ fc_remote_port_add(struct Scsi_Host *shost, int channel,
 			}
 
 			if (match) {
+				dev_dbg(&shost->shost_gendev,
+					"found existing rport id %d target_id %d\n",
+					rport->port_id, rport->scsi_target_id);
 
 				memcpy(&rport->node_name, &ids->node_name,
 					sizeof(rport->node_name));
@@ -2930,6 +2941,14 @@ fc_remote_port_delete(struct fc_rport  *rport)
 	unsigned long timeout = rport->dev_loss_tmo;
 	unsigned long flags;
 
+	dev_dbg(&shost->shost_gendev, "%s %s wwn %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x port_id 0x%x\n",
+		__func__, dev_name(&rport->dev),
+		((u8 *)&rport->port_name)[7], ((u8 *)&rport->port_name)[6],
+		((u8 *)&rport->port_name)[5], ((u8 *)&rport->port_name)[4],
+		((u8 *)&rport->port_name)[3], ((u8 *)&rport->port_name)[2],
+		((u8 *)&rport->port_name)[1], ((u8 *)&rport->port_name)[0],
+		rport->port_id);
+
 	/*
 	 * No need to flush the fc_host work_q's, as all adds are synchronous.
 	 *
@@ -3009,6 +3028,15 @@ fc_remote_port_rolechg(struct fc_rport  *rport, u32 roles)
 	unsigned long flags;
 	int create = 0;
 	int ret;
+
+	dev_dbg(&shost->shost_gendev, "fc_remote_port_rolechg wwn "
+		"%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x "
+		"roles %d target_id %d\n",
+		((u8 *)&rport->port_name)[7], ((u8 *)&rport->port_name)[6],
+		((u8 *)&rport->port_name)[5], ((u8 *)&rport->port_name)[4],
+		((u8 *)&rport->port_name)[3], ((u8 *)&rport->port_name)[2],
+		((u8 *)&rport->port_name)[1], ((u8 *)&rport->port_name)[0],
+		roles, rport->scsi_target_id);
 
 	spin_lock_irqsave(shost->host_lock, flags);
 	if (roles & FC_PORT_ROLE_FCP_TARGET) {
