@@ -685,30 +685,29 @@ static struct qla_tgt_sess *qla_tgt_create_sess(
 
 	/* Check to avoid double sessions */
 	spin_lock_irqsave(&ha->hardware_lock, flags);
-	list_for_each_entry(sess, &ha->qla_tgt->sess_list, sess_list_entry) {
-		if (!memcmp(sess->port_name, fcport->port_name, 8)) {
-			ql_dbg(ql_dbg_tgt_mgt, vha, 0xe108, "Double sess %p"
-			       " found (s_id %x:%x:%x, "
-			       "loop_id %d), updating to d_id %x:%x:%x, "
-			       "loop_id %d", sess, sess->s_id.b.domain,
-			       sess->s_id.b.al_pa, sess->s_id.b.area,
-			       sess->loop_id, fcport->d_id.b.domain,
-			       fcport->d_id.b.al_pa, fcport->d_id.b.area,
-			       fcport->loop_id);
+	sess = qla_tgt_find_sess_by_port_name(ha->qla_tgt, fcport->port_name);
+	if (sess) {
+		ql_dbg(ql_dbg_tgt_mgt, vha, 0xe108, "Double sess %p"
+		       " found (s_id %x:%x:%x, "
+		       "loop_id %d), updating to d_id %x:%x:%x, "
+		       "loop_id %d", sess, sess->s_id.b.domain,
+		       sess->s_id.b.al_pa, sess->s_id.b.area,
+		       sess->loop_id, fcport->d_id.b.domain,
+		       fcport->d_id.b.al_pa, fcport->d_id.b.area,
+		       fcport->loop_id);
 
-			if (sess->deleted)
-				qla_tgt_undelete_sess(sess);
+		if (sess->deleted)
+			qla_tgt_undelete_sess(sess);
 
-			kref_get(&sess->se_sess->sess_kref);
-			sess->s_id = fcport->d_id;
-			sess->loop_id = fcport->loop_id;
-			sess->conf_compl_supported = fcport->conf_compl_supported;
-			if (sess->local && !local)
-				sess->local = 0;
-			spin_unlock_irqrestore(&ha->hardware_lock, flags);
+		kref_get(&sess->se_sess->sess_kref);
+		sess->s_id = fcport->d_id;
+		sess->loop_id = fcport->loop_id;
+		sess->conf_compl_supported = fcport->conf_compl_supported;
+		if (sess->local && !local)
+			sess->local = 0;
+		spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
-			return sess;
-		}
+		return sess;
 	}
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
