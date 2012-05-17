@@ -1268,6 +1268,7 @@ static int __qla_tgt_24xx_handle_abts(struct scsi_qla_host *vha,
 	memset(mcmd, 0, sizeof(*mcmd));
 
 	mcmd->sess = sess;
+	kref_get(&sess->se_sess->sess_kref);
 	memcpy(&mcmd->orig_iocb.abts, abts, sizeof(mcmd->orig_iocb.abts));
 
 	rc = ha->tgt_ops->handle_tmr(mcmd, lun, TMR_ABORT_TASK,
@@ -1275,6 +1276,7 @@ static int __qla_tgt_24xx_handle_abts(struct scsi_qla_host *vha,
 	if (rc != 0) {
 		printk(KERN_ERR "qla_target(%d):  tgt_ops->handle_tmr()"
 				" failed: %d", vha->vp_idx, rc);
+		ha->tgt_ops->put_sess(sess);
 		mempool_free(mcmd, qla_tgt_mgmt_cmd_mempool);
 		return -EFAULT;
 	}
@@ -1389,6 +1391,14 @@ static void qla_tgt_24xx_send_task_mgmt_ctio(struct scsi_qla_host *vha,
 
 void qla_tgt_free_mcmd(struct qla_tgt_mgmt_cmd *mcmd)
 {
+	struct scsi_qla_host *vha = mcmd->sess->vha;
+	struct qla_hw_data *ha = vha->hw;
+	unsigned long flags;
+
+	spin_lock_irqsave(&ha->hardware_lock, flags);
+	ha->tgt_ops->put_sess(mcmd->sess);
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
+
 	mempool_free(mcmd, qla_tgt_mgmt_cmd_mempool);
 }
 EXPORT_SYMBOL(qla_tgt_free_mcmd);
@@ -2752,6 +2762,7 @@ static int qla_tgt_issue_task_mgmt(struct qla_tgt_sess *sess, uint32_t lun,
 		return -ENOMEM;
 	}
 	memset(mcmd, 0, sizeof(*mcmd));
+	kref_get(&sess->se_sess->sess_kref);
 	mcmd->sess = sess;
 
 	if (iocb) {
@@ -2819,6 +2830,7 @@ static int qla_tgt_issue_task_mgmt(struct qla_tgt_sess *sess, uint32_t lun,
 	default:
 		printk(KERN_ERR "qla_target(%d): Unknown task mgmt fn 0x%x\n",
 			    sess->vha->vp_idx, fn);
+		ha->tgt_ops->put_sess(mcmd->sess);
 		mempool_free(mcmd, qla_tgt_mgmt_cmd_mempool);
 		return -ENOSYS;
 	}
@@ -2827,6 +2839,7 @@ static int qla_tgt_issue_task_mgmt(struct qla_tgt_sess *sess, uint32_t lun,
 	if (res != 0) {
 		printk(KERN_ERR "qla_target(%d): tgt_ops->handle_tmr() failed: %d\n",
 			    sess->vha->vp_idx, res);
+		ha->tgt_ops->put_sess(mcmd->sess);
 		mempool_free(mcmd, qla_tgt_mgmt_cmd_mempool);
 		return -EFAULT;
 	}
@@ -2899,6 +2912,7 @@ static int __qla_tgt_abort_task(struct scsi_qla_host *vha,
 	memset(mcmd, 0, sizeof(*mcmd));
 
 	mcmd->sess = sess;
+	kref_get(&sess->se_sess->sess_kref);
 	memcpy(&mcmd->orig_iocb.imm_ntfy, iocb, sizeof(mcmd->orig_iocb.imm_ntfy));
 
 	lun = a->u.isp24.fcp_cmnd.lun;
@@ -2909,6 +2923,7 @@ static int __qla_tgt_abort_task(struct scsi_qla_host *vha,
 	if (rc != 0) {
 		printk(KERN_ERR "qla_target(%d): tgt_ops->handle_tmr()"
 			" failed: %d\n", vha->vp_idx, rc);
+		ha->tgt_ops->put_sess(sess);
 		mempool_free(mcmd, qla_tgt_mgmt_cmd_mempool);
 		return -EFAULT;
 	}
@@ -4068,6 +4083,8 @@ static void qla_tgt_abort_work(struct qla_tgt *tgt,
 
 	if (sess) {
 		ql_dbg(ql_dbg_tgt_mgt, vha, 0xe14c, "sess %p found\n", sess);
+		/* Acquire an extra reference so that this is symmetric with
+		 * qla_tgt_make_local_sess below */
 		kref_get(&sess->se_sess->sess_kref);
 	} else {
 		spin_unlock_irqrestore(&ha->hardware_lock, flags);
@@ -4127,6 +4144,8 @@ static void qla_tgt_tmr_work(struct qla_tgt *tgt,
 
 	if (sess) {
 		ql_dbg(ql_dbg_tgt_mgt, vha, 0xe14c, "sess %p found\n", sess);
+		/* Acquire an extra reference so that this is symmetric with
+		 * qla_tgt_make_local_sess below */
 		kref_get(&sess->se_sess->sess_kref);
 	} else {
 		spin_unlock_irqrestore(&ha->hardware_lock, flags);
