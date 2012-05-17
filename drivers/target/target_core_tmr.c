@@ -216,19 +216,22 @@ static void core_tmr_drain_tmr_list(
 
 		list_move_tail(&tmr_p->tmr_list, &drain_tmr_list);
 	}
-	spin_unlock_irqrestore(&dev->se_tmr_lock, flags);
 
-	list_for_each_entry_safe(tmr_p, tmr_pp, &drain_tmr_list, tmr_list) {
+	while (!list_empty(&drain_tmr_list)) {
+		tmr_p = list_first_entry(&drain_tmr_list, struct se_tmr_req, tmr_list);
 		list_del_init(&tmr_p->tmr_list);
-		cmd = tmr_p->task_cmd;
+		spin_unlock_irqrestore(&dev->se_tmr_lock, flags);
 
+		cmd = tmr_p->task_cmd;
 		pr_debug("LUN_RESET: %s releasing TMR %p Function: 0x%02x,"
 			" Response: 0x%02x, t_state: %d\n",
 			(preempt_and_abort_list) ? "Preempt" : "", tmr_p,
 			tmr_p->function, tmr_p->response, cmd->t_state);
-
 		transport_cmd_finish_abort(cmd, 1);
+
+		spin_lock_irqsave(&dev->se_tmr_lock, flags);
 	}
+	spin_unlock_irqrestore(&dev->se_tmr_lock, flags);
 }
 
 static void core_tmr_drain_cmd_list(
@@ -269,11 +272,11 @@ static void core_tmr_drain_cmd_list(
 		atomic_dec(&qobj->queue_cnt);
 		list_move_tail(&cmd->se_queue_node, &drain_cmd_list);
 	}
-	spin_unlock_irqrestore(&qobj->cmd_queue_lock, flags);
 
 	while (!list_empty(&drain_cmd_list)) {
-		cmd = list_entry(drain_cmd_list.next, struct se_cmd, se_queue_node);
+		cmd = list_first_entry(&drain_cmd_list, struct se_cmd, se_queue_node);
 		list_del_init(&cmd->se_queue_node);
+		spin_unlock_irqrestore(&qobj->cmd_queue_lock, flags);
 
 		pr_debug("LUN_RESET: %s from Device Queue: cmd: %p t_state:"
 			" %d t_fe_count: %d\n", (preempt_and_abort_list) ?
@@ -282,7 +285,10 @@ static void core_tmr_drain_cmd_list(
 
 		core_tmr_handle_tas_abort(tmr_nacl, cmd, tas,
 				atomic_read(&cmd->t_fe_count));
+
+		spin_lock_irqsave(&qobj->cmd_queue_lock, flags);
 	}
+	spin_unlock_irqrestore(&qobj->cmd_queue_lock, flags);
 }
 
 int core_tmr_lun_reset(
