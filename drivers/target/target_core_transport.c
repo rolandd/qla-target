@@ -614,12 +614,14 @@ void transport_cmd_finish_abort(struct se_cmd *cmd, int remove)
 	if (!(cmd->se_cmd_flags & SCF_SCSI_TMR_CDB))
 		transport_lun_remove_cmd(cmd);
 
+	if (remove)
+		transport_remove_cmd_from_queue(cmd);
+
 	if (transport_cmd_check_stop_to_fabric(cmd))
 		return;
-	if (remove) {
-		transport_remove_cmd_from_queue(cmd);
+
+	if (remove)
 		transport_put_cmd(cmd);
-	}
 }
 
 static void transport_add_cmd_to_queue(struct se_cmd *cmd, int t_state,
