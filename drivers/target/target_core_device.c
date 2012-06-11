@@ -104,7 +104,6 @@ int transport_lookup_cmd_lun_cdb(struct se_cmd *se_cmd, u32 unpacked_lun, unsign
 		se_cmd->orig_fe_lun = unpacked_lun;
 		se_cmd->se_cmd_flags |= SCF_SE_LUN_CMD;
 	}
-	spin_unlock_irqrestore(&se_sess->se_node_acl->device_list_lock, flags);
 
 	if (!se_lun) {
 		/*
@@ -119,7 +118,7 @@ int transport_lookup_cmd_lun_cdb(struct se_cmd *se_cmd, u32 unpacked_lun, unsign
 			pr_err_ratelimited("No LUN 0x%08x for initiator %s / SCSI op %02xh\n",
 					   unpacked_lun, se_sess->se_node_acl->initiatorname,
 					   cdb[0]);
-
+			spin_unlock_irqrestore(&se_sess->se_node_acl->device_list_lock, flags);
 			return -ENODEV;
 		}
 		/*
@@ -129,6 +128,7 @@ int transport_lookup_cmd_lun_cdb(struct se_cmd *se_cmd, u32 unpacked_lun, unsign
 		    (se_cmd->data_direction != DMA_NONE)) {
 			se_cmd->scsi_sense_reason = TCM_WRITE_PROTECTED;
 			se_cmd->se_cmd_flags |= SCF_SCSI_CDB_EXCEPTION;
+			spin_unlock_irqrestore(&se_sess->se_node_acl->device_list_lock, flags);
 			return -EACCES;
 		}
 
@@ -136,7 +136,11 @@ int transport_lookup_cmd_lun_cdb(struct se_cmd *se_cmd, u32 unpacked_lun, unsign
 		se_cmd->se_lun = &se_sess->se_tpg->tpg_virt_lun0;
 		se_cmd->orig_fe_lun = 0;
 		se_cmd->se_cmd_flags |= SCF_SE_LUN_CMD;
+		
+		// Make sure we increment the command count for this lun.
+		se_sess->se_node_acl->device_list[0].deve_cmds++;
 	}
+	spin_unlock_irqrestore(&se_sess->se_node_acl->device_list_lock, flags);
 
 	/*
 	 * Determine if the struct se_lun is online.
@@ -295,6 +299,9 @@ int core_free_device_list_for_node(
 	spin_lock_irq(&nacl->device_list_lock);
 	for (i = 0; i < TRANSPORT_MAX_LUNS_PER_TPG; i++) {
 		deve = &nacl->device_list[i];
+
+		/* A command is still in flight! */
+		WARN(deve->deve_cmds, "device_list[%u] free while %u cmds still in flight\n", i, deve->deve_cmds);
 
 		if (!(deve->lun_flags & TRANSPORT_LUNFLAGS_INITIATOR_ACCESS))
 			continue;
