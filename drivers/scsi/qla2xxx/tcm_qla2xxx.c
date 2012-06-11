@@ -1642,11 +1642,12 @@ static int tcm_qla2xxx_check_initiator_node_acl(
 			qla_tgt_sess, s_id);
 	tcm_qla2xxx_set_sess_by_loop_id(lport, se_nacl, nacl, se_sess,
 			qla_tgt_sess, loop_id);
-	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 	/*
 	 * Finally register the new FC Nexus with TCM
 	 */
-	__transport_register_session(se_nacl->se_tpg, se_nacl, se_sess, sess);
+	transport_register_session(se_nacl->se_tpg, se_nacl, se_sess, sess);
+
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
 	return 0;
 }
