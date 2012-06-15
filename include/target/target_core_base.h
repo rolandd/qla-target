@@ -158,7 +158,6 @@ enum transport_state_table {
 	TRANSPORT_PROCESSING	= 5,
 	TRANSPORT_COMPLETE	= 6,
 	TRANSPORT_PROCESS_TMR	= 9,
-	TRANSPORT_ISTATE_PROCESSING = 11,
 	TRANSPORT_NEW_CMD_MAP	= 16,
 	TRANSPORT_COMPLETE_QF_WP = 18,
 	TRANSPORT_COMPLETE_QF_OK = 19,
@@ -832,7 +831,6 @@ struct se_device {
 	spinlock_t		dev_reservation_lock;
 	spinlock_t		dev_status_lock;
 	spinlock_t		se_port_lock;
-	spinlock_t		se_tmr_lock;
 	spinlock_t		qf_cmd_lock;
 	/* Used for legacy SPC-2 reservationsa */
 	struct se_node_acl	*dev_reserved_node_acl;
@@ -841,7 +839,6 @@ struct se_device {
 	/* Used for SPC-3 Persistent Reservations */
 	struct t10_pr_registration *dev_pr_res_holder;
 	struct list_head	dev_sep_list;
-	struct list_head	dev_tmr_list;
 	/* Pointer to descriptor for processing thread */
 	struct task_struct	*process_thread;
 	struct work_struct	qf_work_queue;

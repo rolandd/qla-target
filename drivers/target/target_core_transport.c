@@ -1390,7 +1390,6 @@ struct se_device *transport_add_device_to_core_hba(
 	dev->transport		= transport;
 	INIT_LIST_HEAD(&dev->dev_list);
 	INIT_LIST_HEAD(&dev->dev_sep_list);
-	INIT_LIST_HEAD(&dev->dev_tmr_list);
 	INIT_LIST_HEAD(&dev->execute_task_list);
 	INIT_LIST_HEAD(&dev->delayed_cmd_list);
 	INIT_LIST_HEAD(&dev->state_task_list);
@@ -1400,7 +1399,6 @@ struct se_device *transport_add_device_to_core_hba(
 	spin_lock_init(&dev->dev_reservation_lock);
 	spin_lock_init(&dev->dev_status_lock);
 	spin_lock_init(&dev->se_port_lock);
-	spin_lock_init(&dev->se_tmr_lock);
 	spin_lock_init(&dev->qf_cmd_lock);
 	atomic_set(&dev->dev_ordered_id, 0);
 
@@ -3632,8 +3630,6 @@ void transport_release_cmd(struct se_cmd *cmd)
 {
 	BUG_ON(!cmd->se_tfo);
 
-	if (cmd->se_cmd_flags & SCF_SCSI_TMR_CDB)
-		core_tmr_release_req(&cmd->se_tmr_req);
 	if (cmd->t_task_cdb != cmd->__t_task_cdb)
 		kfree(cmd->t_task_cdb);
 	/*
@@ -4879,7 +4875,6 @@ static int transport_generic_do_tmr(struct se_cmd *cmd)
 		break;
 	}
 
-	cmd->t_state = TRANSPORT_ISTATE_PROCESSING;
 	cmd->se_tfo->queue_tm_rsp(cmd);
 
 	transport_cmd_check_stop_to_fabric(cmd);

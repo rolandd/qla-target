@@ -51,24 +51,8 @@ void core_tmr_req_init(
 	tmr->task_cmd = se_cmd;
 	tmr->fabric_tmr_ptr = fabric_tmr_ptr;
 	tmr->function = function;
-	INIT_LIST_HEAD(&tmr->tmr_list);
 }
 EXPORT_SYMBOL(core_tmr_req_init);
-
-void core_tmr_release_req(
-	struct se_tmr_req *tmr)
-{
-	struct se_device *dev = tmr->tmr_dev;
-	unsigned long flags;
-
-	if (!dev) {
-		return;
-	}
-
-	spin_lock_irqsave(&dev->se_tmr_lock, flags);
-	list_del(&tmr->tmr_list);
-	spin_unlock_irqrestore(&dev->se_tmr_lock, flags);
-}
 
 static void core_tmr_handle_tas_abort(
 	struct se_node_acl *tmr_nacl,
@@ -169,71 +153,6 @@ out:
 	tmr->response = TMR_TASK_DOES_NOT_EXIST;
 }
 
-static void core_tmr_drain_tmr_list(
-	struct se_device *dev,
-	struct se_tmr_req *tmr,
-	struct list_head *preempt_and_abort_list)
-{
-	LIST_HEAD(drain_tmr_list);
-	struct se_tmr_req *tmr_p, *tmr_pp;
-	struct se_cmd *cmd;
-	unsigned long flags;
-	/*
-	 * Release all pending and outgoing TMRs aside from the received
-	 * LUN_RESET tmr..
-	 */
-	spin_lock_irqsave(&dev->se_tmr_lock, flags);
-	list_for_each_entry_safe(tmr_p, tmr_pp, &dev->dev_tmr_list, tmr_list) {
-		/*
-		 * Allow the received TMR to return with FUNCTION_COMPLETE.
-		 */
-		if (tmr_p == tmr)
-			continue;
-
-		cmd = tmr_p->task_cmd;
-		if (!cmd) {
-			pr_err("Unable to locate struct se_cmd for TMR\n");
-			continue;
-		}
-		/*
-		 * If this function was called with a valid pr_res_key
-		 * parameter (eg: for PROUT PREEMPT_AND_ABORT service action
-		 * skip non regisration key matching TMRs.
-		 */
-		if (target_check_cdb_and_preempt(preempt_and_abort_list, cmd))
-			continue;
-
-		spin_lock(&cmd->t_state_lock);
-		if (!(cmd->transport_state & CMD_T_ACTIVE)) {
-			spin_unlock(&cmd->t_state_lock);
-			continue;
-		}
-		if (cmd->t_state == TRANSPORT_ISTATE_PROCESSING) {
-			spin_unlock(&cmd->t_state_lock);
-			continue;
-		}
-		spin_unlock(&cmd->t_state_lock);
-
-		list_move_tail(&tmr_p->tmr_list, &drain_tmr_list);
-	}
-
-	while (!list_empty(&drain_tmr_list)) {
-		tmr_p = list_first_entry(&drain_tmr_list, struct se_tmr_req, tmr_list);
-		list_del_init(&tmr_p->tmr_list);
-		spin_unlock_irqrestore(&dev->se_tmr_lock, flags);
-
-		cmd = tmr_p->task_cmd;
-		pr_debug("LUN_RESET: %s releasing TMR %p Function: 0x%02x,"
-			" Response: 0x%02x, t_state: %d\n",
-			(preempt_and_abort_list) ? "Preempt" : "", tmr_p,
-			tmr_p->function, tmr_p->response, cmd->t_state);
-		transport_cmd_finish_abort(cmd, 1);
-
-		spin_lock_irqsave(&dev->se_tmr_lock, flags);
-	}
-	spin_unlock_irqrestore(&dev->se_tmr_lock, flags);
-}
-
 static void core_tmr_drain_cmd_list(
 	struct se_device *dev,
 	struct se_cmd *prout_cmd,
@@ -278,13 +197,22 @@ static void core_tmr_drain_cmd_list(
 		list_del_init(&cmd->se_queue_node);
 		spin_unlock_irqrestore(&qobj->cmd_queue_lock, flags);
 
-		pr_debug("LUN_RESET: %s from Device Queue: cmd: %p t_state:"
-			" %d t_fe_count: %d\n", (preempt_and_abort_list) ?
-			"Preempt" : "", cmd, cmd->t_state,
-			atomic_read(&cmd->t_fe_count));
+		if (cmd->se_cmd_flags & SCF_SCSI_TMR_CDB) {
+			struct se_tmr_req *tmr = &cmd->se_tmr_req;
 
-		core_tmr_handle_tas_abort(tmr_nacl, cmd, tas,
-				atomic_read(&cmd->t_fe_count));
+			pr_debug("LUN_RESET: %s releasing TMR %p Function: 0x%02x,"
+				 " Response: 0x%02x, t_state: %d\n",
+				 (preempt_and_abort_list) ? "Preempt" : "", tmr,
+				 tmr->function, tmr->response, cmd->t_state);
+			transport_cmd_finish_abort(cmd, 1);
+		} else {
+			pr_debug("LUN_RESET: %s from Device Queue: cmd: %p t_state:"
+				 " %d t_fe_count: %d\n", (preempt_and_abort_list) ?
+				 "Preempt" : "", cmd, cmd->t_state,
+				 atomic_read(&cmd->t_fe_count));
+			core_tmr_handle_tas_abort(tmr_nacl, cmd, tas,
+						  atomic_read(&cmd->t_fe_count));
+		}
 
 		spin_lock_irqsave(&qobj->cmd_queue_lock, flags);
 	}
@@ -342,7 +270,6 @@ int core_tmr_lun_reset(
 		}
 	}
 
-	core_tmr_drain_tmr_list(dev, tmr, preempt_and_abort_list);
 	core_tmr_drain_cmd_list(dev, prout_cmd, tmr_nacl, tas,
 				preempt_and_abort_list);
 	/*
