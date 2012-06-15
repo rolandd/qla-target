@@ -4306,15 +4306,20 @@ qla2x00_restart_isp(scsi_qla_host_t *vha)
 			/* Issue a marker after FW becomes ready. */
 			qla2x00_marker(vha, req, rsp, 0, 0, MK_SYNC_ALL);
 
+			spin_lock_irqsave(&ha->hardware_lock, flags);
+
 			vha->flags.online = 1;
+
+			if (vha->hw->tgt_ops)
+				qla_tgt_flush_ctio(vha);
 
 			/*
 			 * Process any ATIO queue entries that came in
 			 * while we weren't online.
 			 */
-			spin_lock_irqsave(&ha->hardware_lock, flags);
 			if (qla_tgt_mode_enabled(vha))
 				qla_tgt_24xx_process_atio_queue(vha);
+
 			spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
 			/* Wait at most MAX_TARGET RSCNs for a stable link. */

@@ -2404,6 +2404,49 @@ void qla_tgt_ctio_completion(struct scsi_qla_host *vha, uint32_t handle)
 	tgt->irq_cmd_count--;
 }
 
+void qla_tgt_flush_ctio(scsi_qla_host_t *vha)
+{
+	struct qla_hw_data *ha = vha->hw;
+	struct qla_tgt_cmd *cmd;
+	uint32_t h;
+
+	assert_spin_locked(&ha->hardware_lock);
+
+	for (h = 0; h < MAX_OUTSTANDING_COMMANDS; ++h) {
+		cmd = ha->cmds[h];
+
+		if (cmd) {
+			struct se_cmd * se_cmd = &cmd->se_cmd;
+			pr_info("Aborting cmd %p: state=%d t_state=%d transport "
+				"state=0x%x cdb[0]=%d ps_opcode=%d", cmd, cmd->state,
+				se_cmd->t_state, se_cmd->transport_state,
+				se_cmd->t_task_cdb ? se_cmd->t_task_cdb[0] : 0,
+				se_cmd->ps_opcode);
+
+			if (cmd->sg_mapped)
+				qla_tgt_unmap_sg(vha, cmd);
+
+			switch (cmd->state) {
+			case QLA_TGT_STATE_PROCESSED:
+				vha->hw->tgt_ops->free_cmd(cmd);
+				break;
+
+			case QLA_TGT_STATE_NEED_DATA:
+				cmd->write_data_transferred = 0;
+				vha->hw->tgt_ops->handle_data(cmd);
+				break;
+
+			default:
+				dev_info(&ha->pdev->dev, "pending cmd %p in state %d\n",
+					 cmd, cmd->state);
+				break;
+			}
+
+			ha->cmds[h] = NULL;
+		}
+	}
+}
+
 static inline int qla_tgt_get_fcp_task_attr(uint8_t task_codes)
 {
 	int fcp_task_attr;
