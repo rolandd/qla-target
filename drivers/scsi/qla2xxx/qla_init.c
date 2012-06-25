@@ -4594,6 +4594,13 @@ qla24xx_nvram_config(scsi_qla_host_t *vha)
 		icb->node_name[0] &= 0xF0;
 	}
 
+	/* Override port name / node name */
+	if (ha->tgt_node_name[0]) {
+		icb->firmware_options_1 |= __constant_cpu_to_le32(BIT_14);
+		memcpy(icb->node_name, ha->tgt_node_name, WWN_SIZE);
+		memcpy(icb->port_name, ha->tgt_node_name, WWN_SIZE);
+	}
+
 	/* Set host adapter parameters. */
 	ha->flags.disable_risc_code_load = 0;
 	ha->flags.enable_lip_reset = 0;

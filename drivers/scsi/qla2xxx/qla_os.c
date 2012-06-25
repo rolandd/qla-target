@@ -2063,6 +2063,155 @@ qla2xxx_scan_finished(struct Scsi_Host *shost, unsigned long time)
 	return atomic_read(&vha->loop_state) == LOOP_READY;
 }
 
+static ssize_t qla2x00_store_node_wwn(struct device *dev,
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
+{
+	scsi_qla_host_t *vha;
+	struct qla_hw_data *ha;
+	u64 wwn;
+	int ret;
+
+	vha = pci_get_drvdata(to_pci_dev(dev));
+	ha = vha->hw;
+
+	ret = kstrtou64(buf, 16, &wwn);
+	if (ret < 0)
+		return ret;
+
+	*(__force __be64 *) ha->tgt_node_name = cpu_to_be64(wwn);
+
+	return count;
+}
+
+static ssize_t qla2x00_show_node_wwn(struct device *dev,
+				     struct device_attribute *attr, char *buf)
+{
+	scsi_qla_host_t *vha;
+	struct qla_hw_data *ha;
+
+	vha = pci_get_drvdata(to_pci_dev(dev));
+	ha = vha->hw;
+
+	return snprintf(buf, PAGE_SIZE, "%016llx\n",
+			(unsigned long long) be64_to_cpup((__force __be64 *) ha->tgt_node_name));
+}
+
+static ssize_t qla2x00_store_controller_index(struct device *dev,
+					      struct device_attribute *attr,
+					      const char *buf, size_t count)
+{
+	scsi_qla_host_t *vha;
+	struct qla_hw_data *ha;
+	u32 index;
+	int ret;
+
+	vha = pci_get_drvdata(to_pci_dev(dev));
+	ha = vha->hw;
+
+	ret = kstrtou32(buf, 0, &index);
+	if (ret < 0)
+		return ret;
+
+	ha->tgt_controller_index = index;
+
+	return count;
+}
+
+static ssize_t qla2x00_show_controller_index(struct device *dev,
+					     struct device_attribute *attr, char *buf)
+{
+	scsi_qla_host_t *vha;
+	struct qla_hw_data *ha;
+
+	vha = pci_get_drvdata(to_pci_dev(dev));
+	ha = vha->hw;
+
+	return snprintf(buf, PAGE_SIZE, "%08x\n", ha->tgt_controller_index);
+}
+
+static ssize_t qla2x00_store_port_index(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	scsi_qla_host_t *vha;
+	struct qla_hw_data *ha;
+	u32 index;
+	int ret;
+
+	vha = pci_get_drvdata(to_pci_dev(dev));
+	ha = vha->hw;
+
+	ret = kstrtou32(buf, 0, &index);
+	if (ret < 0)
+		return ret;
+
+	ha->tgt_port_index = index;
+
+	return count;
+}
+
+static ssize_t qla2x00_show_port_index(struct device *dev,
+				       struct device_attribute *attr, char *buf)
+{
+	scsi_qla_host_t *vha;
+	struct qla_hw_data *ha;
+
+	vha = pci_get_drvdata(to_pci_dev(dev));
+	ha = vha->hw;
+
+	return snprintf(buf, PAGE_SIZE, "%08x\n", ha->tgt_port_index);
+}
+
+static DEVICE_ATTR(node_wwn, S_IWUSR | S_IRUGO,
+		   qla2x00_show_node_wwn, qla2x00_store_node_wwn);
+static DEVICE_ATTR(target_controller_index, S_IWUSR | S_IRUGO,
+		   qla2x00_show_controller_index, qla2x00_store_controller_index);
+static DEVICE_ATTR(target_port_index, S_IWUSR | S_IRUGO,
+		   qla2x00_show_port_index, qla2x00_store_port_index);
+
+static int qla2x00_add_pdev_attrs(struct qla_hw_data *ha)
+{
+	static char helper[] = "/opt/Purity/bin/set_fc_port_name";
+	const char *pname = pci_name(ha->pdev);
+	char *argv[] = { helper, (char *) pname, NULL };
+	char *envp[] = { NULL };
+	int ret;
+
+	ret = device_create_file(&ha->pdev->dev, &dev_attr_node_wwn);
+	if (ret)
+		return ret;
+
+	ret = device_create_file(&ha->pdev->dev, &dev_attr_target_controller_index);
+	if (ret)
+		goto err_wwn;
+
+	ret = device_create_file(&ha->pdev->dev, &dev_attr_target_port_index);
+	if (ret)
+		goto err_controller;
+
+	ret = call_usermodehelper(helper, argv, envp, UMH_WAIT_PROC);
+	if (ret)
+		pr_warning("qla2xxx: Call of <%s %s> returned %d\n", helper, pname, ret);
+
+	return 0;
+
+err_controller:
+	device_remove_file(&ha->pdev->dev, &dev_attr_target_controller_index);
+
+err_wwn:
+	device_remove_file(&ha->pdev->dev, &dev_attr_node_wwn);
+
+	return ret;
+}
+
+static void qla2x00_remove_pdev_attrs(struct qla_hw_data *ha)
+{
+	device_remove_file(&ha->pdev->dev, &dev_attr_node_wwn);
+	device_remove_file(&ha->pdev->dev, &dev_attr_target_controller_index);
+	device_remove_file(&ha->pdev->dev, &dev_attr_target_port_index);
+}
+
 /*
  * PCI driver interface
  */
@@ -2303,6 +2452,10 @@ qla2x00_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 		base_vha->mgmt_svr_loop_id = MANAGEMENT_SERVER +
 						base_vha->vp_idx;
 
+	ret = qla2x00_add_pdev_attrs(ha);
+	if (ret)
+		goto probe_init_failed;
+
 	/* Set the SG table size based on ISP type */
 	if (!IS_FWI2_CAPABLE(ha)) {
 		if (IS_QLA2100(ha))
@@ -2536,6 +2689,8 @@ probe_failed:
 	qla2x00_free_device(base_vha);
 
 	scsi_host_put(base_vha->host);
+	qla2x00_remove_pdev_attrs(ha);
+	pci_set_drvdata(pdev, NULL);
 
 probe_hw_failed:
 	if (IS_QLA82XX(ha)) {
@@ -2682,6 +2837,8 @@ qla2x00_remove_one(struct pci_dev *pdev)
 	fc_remove_host(base_vha->host);
 
 	scsi_remove_host(base_vha->host);
+
+	qla2x00_remove_pdev_attrs(ha);
 
 	qla2x00_free_device(base_vha);
 
