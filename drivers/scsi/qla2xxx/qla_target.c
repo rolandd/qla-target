@@ -2508,7 +2508,7 @@ static void qla_tgt_do_work(struct work_struct *work)
 	sess = ha->tgt_ops->find_sess_by_s_id(vha,
 				atio->u.isp24.fcp_hdr.s_id);
 	if (sess) {
-		if (unlikely(sess->tearing_down)) {
+		if (unlikely(sess->se_sess->sess_tearing_down)) {
 			sess = NULL;
 			spin_unlock_irqrestore(&ha->hardware_lock, flags);
 			goto out_term;
