@@ -74,6 +74,7 @@ static void transport_handle_queue_full(struct se_cmd *cmd,
 		struct se_device *dev);
 static void transport_free_dev_tasks(struct se_cmd *cmd);
 static int transport_generic_get_mem(struct se_cmd *cmd);
+static void target_get_sess_cmd(struct se_session *, struct se_cmd *, bool);
 static void transport_put_cmd(struct se_cmd *cmd);
 static void transport_remove_cmd_from_queue(struct se_cmd *cmd);
 static int transport_set_sense_codes(struct se_cmd *cmd, u8 asc, u8 ascq);
@@ -4174,8 +4175,8 @@ EXPORT_SYMBOL(transport_generic_free_cmd);
  * @se_cmd:	command descriptor to add
  * @ack_kref:	Signal that fabric will perform an ack target_put_sess_cmd()
  */
-void target_get_sess_cmd(struct se_session *se_sess, struct se_cmd *se_cmd,
-			bool ack_kref)
+static void target_get_sess_cmd(struct se_session *se_sess, struct se_cmd *se_cmd,
+				bool ack_kref)
 {
 	unsigned long flags;
 
@@ -4195,7 +4196,6 @@ void target_get_sess_cmd(struct se_session *se_sess, struct se_cmd *se_cmd,
 	se_cmd->check_release = 1;
 	spin_unlock_irqrestore(&se_sess->sess_cmd_lock, flags);
 }
-EXPORT_SYMBOL(target_get_sess_cmd);
 
 static void target_release_cmd_kref(struct kref *kref)
 {
