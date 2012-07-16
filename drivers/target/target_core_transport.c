@@ -1730,7 +1730,7 @@ EXPORT_SYMBOL(transport_handle_cdb_direct);
  * This may only be called from process context, and also currently
  * assumes internal allocation of fabric payload buffer by target-core.
  **/
-void target_submit_cmd(struct se_cmd *se_cmd, struct se_session *se_sess,
+int target_submit_cmd(struct se_cmd *se_cmd, struct se_session *se_sess,
 		unsigned char *cdb, unsigned char *sense, u32 unpacked_lun,
 		u32 data_length, int task_attr, int data_dir, int flags)
 {
@@ -1769,7 +1769,7 @@ void target_submit_cmd(struct se_cmd *se_cmd, struct se_session *se_sess,
 		transport_send_check_condition_and_sense(se_cmd,
 				se_cmd->scsi_sense_reason, 0);
 		target_put_sess_cmd(se_sess, se_cmd);
-		return;
+		return 0;
 	}
 	/*
 	 * Sanitize CDBs via transport_generic_cmd_sequencer() and
@@ -1778,7 +1778,7 @@ void target_submit_cmd(struct se_cmd *se_cmd, struct se_session *se_sess,
 	rc = transport_generic_allocate_tasks(se_cmd, cdb);
 	if (rc != 0) {
 		transport_generic_request_failure(se_cmd);
-		return;
+		return 0;
 	}
 	/*
 	 * Dispatch se_cmd descriptor to se_lun->lun_se_dev backend
@@ -1787,7 +1787,8 @@ void target_submit_cmd(struct se_cmd *se_cmd, struct se_session *se_sess,
 	 * when fabric has filled the incoming buffer.
 	 */
 	transport_handle_cdb_direct(se_cmd);
-	return;
+
+	return 0;
 }
 EXPORT_SYMBOL(target_submit_cmd);
 

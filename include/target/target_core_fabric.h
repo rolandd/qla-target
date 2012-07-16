@@ -123,7 +123,7 @@ int	transport_lookup_cmd_lun(struct se_cmd *, u32);
 int	transport_lookup_cmd_lun_cdb(struct se_cmd *, u32, unsigned char *);
 int	transport_generic_allocate_tasks(struct se_cmd *, unsigned char *);
 int	transport_handle_cdb_direct(struct se_cmd *);
-void	target_submit_cmd(struct se_cmd *, struct se_session *, unsigned char *,
+int	target_submit_cmd(struct se_cmd *, struct se_session *, unsigned char *,
 		unsigned char *, u32, u32, int, int, int);
 void	target_submit_tmr(struct se_cmd *se_cmd, struct se_session *se_sess,
 		unsigned char *sense, u32 unpacked_lun,
