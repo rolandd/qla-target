@@ -109,10 +109,10 @@ void core_tmr_abort_task(
 		if (tmr->ref_task_tag != ref_tag)
 			continue;
 
-		printk("ABORT_TASK: Found referenced %s task_tag: %u\n",
-			se_cmd->se_tfo->get_fabric_name(), ref_tag);
-
 		spin_lock(&se_cmd->t_state_lock);
+		printk("ABORT_TASK: Found referenced %s task_tag: 0x%x\n transport_state: 0x%x",
+		       se_cmd->se_tfo->get_fabric_name(), ref_tag, se_cmd->transport_state);
+
 		if (se_cmd->transport_state & CMD_T_COMPLETE) {
 			printk("ABORT_TASK: ref_tag: %u already complete, skipping\n", ref_tag);
 			spin_unlock(&se_cmd->t_state_lock);

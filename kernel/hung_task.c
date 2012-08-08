@@ -35,6 +35,7 @@ unsigned long __read_mostly sysctl_hung_task_check_count = PID_MAX_LIMIT;
  * Zero means infinite timeout - no checking done:
  */
 unsigned long __read_mostly sysctl_hung_task_timeout_secs = 120;
+EXPORT_SYMBOL_GPL(sysctl_hung_task_timeout_secs);
 
 unsigned long __read_mostly sysctl_hung_task_warnings = 10;
 

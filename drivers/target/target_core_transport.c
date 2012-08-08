@@ -4386,6 +4386,12 @@ static void __transport_clear_lun_from_sessions(struct se_lun *lun)
 			cmd->se_lun->unpacked_lun,
 			cmd->se_tfo->get_task_tag(cmd));
 		cmd->transport_state |= CMD_T_LUN_STOP;
+		if (cmd->transport_state & CMD_T_STOP) {
+			pr_warn("%s cmd %p is being stopped: transport_state: 0x%x "
+				"i_state: %d, t_state=%d\n", __func__, cmd,
+				cmd->transport_state, cmd->se_tfo->get_cmd_state(cmd),
+				cmd->t_state);
+		}
 		spin_unlock(&cmd->t_state_lock);
 
 		spin_unlock_irqrestore(&lun->lun_cmd_lock, lun_flags);
@@ -4495,7 +4501,7 @@ int transport_clear_lun_from_sessions(struct se_lun *lun)
  */
 bool transport_wait_for_tasks(struct se_cmd *cmd)
 {
-	unsigned long flags;
+	unsigned long flags, old_transport_state;
 
 	spin_lock_irqsave(&cmd->t_state_lock, flags);
 	if (!(cmd->se_cmd_flags & SCF_SE_LUN_CMD) &&
@@ -4531,9 +4537,17 @@ bool transport_wait_for_tasks(struct se_cmd *cmd)
 		 * We go ahead and up transport_lun_stop_comp just to be sure
 		 * here.
 		 */
+		old_transport_state = cmd->transport_state;
 		spin_unlock_irqrestore(&cmd->t_state_lock, flags);
 		complete(&cmd->transport_lun_stop_comp);
-		wait_for_completion(&cmd->transport_lun_fe_stop_comp);
+		if (!wait_for_completion_timeout(&cmd->transport_lun_fe_stop_comp,
+				sysctl_hung_task_timeout_secs * (HZ/2))) {
+			pr_warn("cmd %p/old_transport_state=0x%lx wait for transport_lun_fe_stop_comp appears hung:\n",
+				cmd, old_transport_state);
+			pr_warn("cmd %p tag %x\n", cmd, cmd->se_tfo->get_task_tag(cmd));
+			print_hex_dump_bytes(KERN_WARNING, 2, cmd, sizeof(*cmd));
+			wait_for_completion(&cmd->transport_lun_fe_stop_comp);
+		}
 		spin_lock_irqsave(&cmd->t_state_lock, flags);
 
 		transport_all_task_dev_remove_state(cmd);
@@ -4562,11 +4576,19 @@ bool transport_wait_for_tasks(struct se_cmd *cmd)
 		cmd, cmd->se_tfo->get_task_tag(cmd),
 		cmd->se_tfo->get_cmd_state(cmd), cmd->t_state);
 
+	old_transport_state = cmd->transport_state;
 	spin_unlock_irqrestore(&cmd->t_state_lock, flags);
 
 	wake_up_interruptible(&cmd->se_dev->dev_queue_obj.thread_wq);
 
-	wait_for_completion(&cmd->t_transport_stop_comp);
+	if (!wait_for_completion_timeout(&cmd->t_transport_stop_comp,
+					 sysctl_hung_task_timeout_secs * (HZ/2))) {
+		pr_warn("cmd %p/old_transport_state=0x%lx wait for t_transport_stop_comp appears hung:\n",
+			cmd, old_transport_state);
+		pr_warn("cmd %p tag %x\n", cmd, cmd->se_tfo->get_task_tag(cmd));
+		print_hex_dump_bytes(KERN_WARNING, 2, cmd, sizeof(*cmd));
+		wait_for_completion(&cmd->t_transport_stop_comp);
+	}
 
 	spin_lock_irqsave(&cmd->t_state_lock, flags);
 	cmd->transport_state &= ~(CMD_T_ACTIVE | CMD_T_STOP);
