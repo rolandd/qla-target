@@ -3066,6 +3066,18 @@ static int transport_generic_cmd_sequencer(
 		goto out_unsupported_cdb;
 	}
 
+	/* reject any command that we don't have a handler for */
+	if (!(passthrough || cmd->execute_task ||
+	     (cmd->se_cmd_flags & SCF_SCSI_DATA_SG_IO_CDB)))
+		goto out_unsupported_cdb;
+
+	if (cmd->se_cmd_flags & SCF_SCSI_DATA_SG_IO_CDB &&
+	    sectors > dev->se_sub_dev->se_dev_attrib.fabric_max_sectors) {
+		printk_ratelimited(KERN_ERR "SCSI OP %02xh with too big sectors %d\n",
+				   cdb[0], sectors);
+		goto out_invalid_cdb_field;
+	}
+
 	if (size != cmd->data_length) {
 		pr_warn("TARGET_CORE[%s]: Expected Transfer Length:"
 			" %u does not match SCSI CDB Length: %u for SAM Opcode:"
@@ -3100,18 +3112,6 @@ static int transport_generic_cmd_sequencer(
 		}
 		cmd->data_length = size;
 	}
-
-	if (cmd->se_cmd_flags & SCF_SCSI_DATA_SG_IO_CDB &&
-	    sectors > dev->se_sub_dev->se_dev_attrib.fabric_max_sectors) {
-		printk_ratelimited(KERN_ERR "SCSI OP %02xh with too big sectors %d\n",
-				   cdb[0], sectors);
-		goto out_invalid_cdb_field;
-	}
-
-	/* reject any command that we don't have a handler for */
-	if (!(passthrough || cmd->execute_task ||
-	     (cmd->se_cmd_flags & SCF_SCSI_DATA_SG_IO_CDB)))
-		goto out_unsupported_cdb;
 
 	transport_set_supported_SAM_opcode(cmd);
 	return ret;
