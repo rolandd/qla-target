@@ -10,5 +10,6 @@ extern int iscsit_na_random_datain_pdu_offsets(struct iscsi_node_acl *, u32);
 extern int iscsit_na_random_datain_seq_offsets(struct iscsi_node_acl *, u32);
 extern int iscsit_na_random_r2t_offsets(struct iscsi_node_acl *, u32);
 extern int iscsit_na_default_erl(struct iscsi_node_acl *, u32);
+extern int iscsit_na_acl_serial(struct iscsi_node_acl *, u64);
 
 #endif /* ISCSI_TARGET_NODEATTRIB_H */

@@ -691,6 +691,7 @@ struct iscsi_node_attrib {
 	u32			random_r2t_offsets;
 	u32			tmr_cold_reset;
 	u32			tmr_warm_reset;
+	u64			acl_serial;
 	struct iscsi_node_acl *nacl;
 };
 

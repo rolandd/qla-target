@@ -512,10 +512,16 @@ static void tcm_qla2xxx_sess_get_i_t_nexus(struct se_cmd *se_cmd,
 	struct se_session *se_sess = se_cmd->se_sess;
 	struct tcm_qla2xxx_tpg *tpg = container_of(
 		se_sess->se_tpg, struct tcm_qla2xxx_tpg, se_tpg);
-	struct qla_tgt_sess *sess = se_sess->fabric_sess_ptr;
 
-	*initiator = sess->port_name;
-	*initiator_len = sizeof(sess->port_name);
+	if (se_sess->se_node_acl->acl_serial) {
+		*initiator = (u8 *)&se_sess->se_node_acl->acl_serial;
+		*initiator_len = sizeof(&se_sess->se_node_acl->acl_serial);
+	} else {
+		struct qla_tgt_sess *sess = se_sess->fabric_sess_ptr;
+
+		*initiator = sess->port_name;
+		*initiator_len = sizeof(sess->port_name);
+	}
 
 	*target = (const u8 *)&tpg->lport->lport_wwpn;
 	*target_len = sizeof(tpg->lport->lport_wwpn);
@@ -1137,6 +1143,34 @@ static struct configfs_attribute *tcm_qla2xxx_tpg_attrs[] = {
 	&tcm_qla2xxx_tpg_enable.attr,
 	NULL,
 };
+
+/* Start items for tcm_qla2xxx_nacl_attrib_cit */
+
+static ssize_t tcm_qla2xxx_nacl_attrib_show_acl_serial(
+	struct se_node_acl *nacl,
+	char *page)
+{
+	return sprintf(page, "%llu\n",
+		       (long long unsigned)nacl->acl_serial);
+}
+
+static ssize_t tcm_qla2xxx_nacl_attrib_store_acl_serial(
+	struct se_node_acl *nacl,
+	const char *page,
+	size_t count)
+{
+	nacl->acl_serial = (u64 __force)simple_strtoull(page, NULL, 0);
+	return count;
+}
+
+TF_NACL_ATTRIB_ATTR(tcm_qla2xxx, acl_serial, S_IRUGO | S_IWUSR);
+
+static struct configfs_attribute *tcm_qla2xxx_nacl_attrib_attrs[] = {
+	&tcm_qla2xxx_nacl_attrib_acl_serial.attr,
+	NULL,
+};
+
+/* End items for tcm_qla2xxx_nacl_attrib_cit */
 
 static struct se_portal_group *tcm_qla2xxx_make_tpg(
 	struct se_wwn *wwn,
@@ -1919,7 +1953,7 @@ static int tcm_qla2xxx_register_configfs(void)
 	TF_CIT_TMPL(fabric)->tfc_tpg_param_cit.ct_attrs = NULL;
 	TF_CIT_TMPL(fabric)->tfc_tpg_np_base_cit.ct_attrs = NULL;
 	TF_CIT_TMPL(fabric)->tfc_tpg_nacl_base_cit.ct_attrs = NULL;
-	TF_CIT_TMPL(fabric)->tfc_tpg_nacl_attrib_cit.ct_attrs = NULL;
+	TF_CIT_TMPL(fabric)->tfc_tpg_nacl_attrib_cit.ct_attrs = tcm_qla2xxx_nacl_attrib_attrs;
 	TF_CIT_TMPL(fabric)->tfc_tpg_nacl_auth_cit.ct_attrs = NULL;
 	TF_CIT_TMPL(fabric)->tfc_tpg_nacl_param_cit.ct_attrs = NULL;
 	/*

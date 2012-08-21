@@ -260,3 +260,15 @@ extern int iscsit_na_default_erl(
 
 	return 0;
 }
+
+int iscsit_na_acl_serial(
+	struct iscsi_node_acl *acl,
+	u64 acl_serial)
+{
+	struct iscsi_node_attrib *a = &acl->node_attrib;
+
+	a->acl_serial = acl_serial;
+	acl->se_node_acl.acl_serial = acl_serial;
+
+	return 0;
+}

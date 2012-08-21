@@ -265,6 +265,40 @@ TF_CIT_SETUP(tpg_mappedlun_stat, NULL, &target_fabric_mappedlun_stat_group_ops,
 
 /* Start of tfc_tpg_nacl_attrib_cit */
 
+CONFIGFS_EATTR_STRUCT(target_fabric_nacl, se_node_acl);
+#define TCM_NACL_ATTR(_name, _mode)					\
+static struct target_fabric_nacl_attribute target_fabric_nacl_##_name =	\
+	__CONFIGFS_EATTR(_name, _mode,					\
+	target_fabric_nacl_show_attr_##_name,				\
+	target_fabric_nacl_store_attr_##_name);
+
+/*
+ * acl_serial
+ */
+static ssize_t target_fabric_nacl_show_attr_acl_serial(
+	struct se_node_acl *nacl,
+	char *page)
+{
+	return sprintf(page, "%llu\n",
+		       (long long unsigned)nacl->acl_serial);
+}
+
+static ssize_t target_fabric_nacl_store_attr_acl_serial(
+	struct se_node_acl *nacl,
+	const char *page,
+	size_t count)
+{
+	nacl->acl_serial = (u64 __force)simple_strtoull(page, NULL, 0);
+	return count;
+}
+
+TCM_NACL_ATTR(acl_serial, S_IRUGO | S_IWUSR);
+
+static struct configfs_attribute *target_fabric_nacl_attrib_attrs[] = {
+	&target_fabric_nacl_acl_serial.attr,
+	NULL,
+};
+
 CONFIGFS_EATTR_OPS(target_fabric_nacl_attrib, se_node_acl, acl_attrib_group);
 
 static struct configfs_item_operations target_fabric_nacl_attrib_item_ops = {
@@ -272,7 +306,8 @@ static struct configfs_item_operations target_fabric_nacl_attrib_item_ops = {
 	.store_attribute	= target_fabric_nacl_attrib_attr_store,
 };
 
-TF_CIT_SETUP(tpg_nacl_attrib, &target_fabric_nacl_attrib_item_ops, NULL, NULL);
+TF_CIT_SETUP(tpg_nacl_attrib, &target_fabric_nacl_attrib_item_ops, NULL,
+	     target_fabric_nacl_attrib_attrs);
 
 /* End of tfc_tpg_nacl_attrib_cit */
 

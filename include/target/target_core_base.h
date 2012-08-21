@@ -659,6 +659,8 @@ struct se_node_acl {
 	struct list_head	acl_sess_list;
 	struct completion	acl_free_comp;
 	struct kref		acl_kref;
+	/* acl identifier written by userspace */
+	u64			acl_serial;
 };
 
 struct se_session {

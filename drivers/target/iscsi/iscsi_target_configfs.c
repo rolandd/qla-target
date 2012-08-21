@@ -337,6 +337,38 @@ static ssize_t iscsi_nacl_attrib_store_##name(				\
 }
 
 #define NACL_ATTR(_name, _mode) TF_NACL_ATTRIB_ATTR(iscsi, _name, _mode);
+
+#define DEF_NACL_ATTRIB64(name)						\
+static ssize_t iscsi_nacl_attrib_show_##name(				\
+	struct se_node_acl *se_nacl,					\
+	char *page)							\
+{									\
+	struct iscsi_node_acl *nacl = container_of(se_nacl, struct iscsi_node_acl, \
+					se_node_acl);			\
+									\
+	return sprintf(page, "%llu\n",					\
+		(long long unsigned)ISCSI_NODE_ATTRIB(nacl)->name);	\
+}									\
+									\
+static ssize_t iscsi_nacl_attrib_store_##name(				\
+	struct se_node_acl *se_nacl,					\
+	const char *page,						\
+	size_t count)							\
+{									\
+	struct iscsi_node_acl *nacl = container_of(se_nacl, struct iscsi_node_acl, \
+					se_node_acl);			\
+	char *endptr;							\
+	long long unsigned val;						\
+	int ret;							\
+									\
+	val = simple_strtoull(page, &endptr, 0);			\
+	ret = iscsit_na_##name(nacl, (u64 __force)val);			\
+	if (ret < 0)							\
+		return ret;						\
+									\
+	return count;							\
+}
+
 /*
  * Define iscsi_node_attrib_s_dataout_timeout
  */
@@ -377,6 +409,11 @@ NACL_ATTR(random_datain_seq_offsets, S_IRUGO | S_IWUSR);
  */
 DEF_NACL_ATTRIB(random_r2t_offsets);
 NACL_ATTR(random_r2t_offsets, S_IRUGO | S_IWUSR);
+/*
+ * Reimplement acl_serial since we've overridden the core node
+ */
+DEF_NACL_ATTRIB64(acl_serial);
+NACL_ATTR(acl_serial, S_IRUGO | S_IWUSR);
 
 static struct configfs_attribute *lio_target_nacl_attrib_attrs[] = {
 	&iscsi_nacl_attrib_dataout_timeout.attr,
@@ -387,6 +424,7 @@ static struct configfs_attribute *lio_target_nacl_attrib_attrs[] = {
 	&iscsi_nacl_attrib_random_datain_pdu_offsets.attr,
 	&iscsi_nacl_attrib_random_datain_seq_offsets.attr,
 	&iscsi_nacl_attrib_random_r2t_offsets.attr,
+	&iscsi_nacl_attrib_acl_serial.attr,
 	NULL,
 };
 
@@ -1554,6 +1592,21 @@ static u32 lio_sess_get_initiator_sid(
 		sess->isid[3], sess->isid[4], sess->isid[5]);
 }
 
+static void lio_sess_get_i_t_nexus(struct se_cmd *se_cmd,
+				    const u8 **initiator, size_t *initiator_len,
+				    const u8 **target, size_t *target_len)
+{
+	struct iscsi_node_acl *node_acl = container_of(
+		se_cmd->se_sess->se_node_acl, struct iscsi_node_acl,
+		se_node_acl);
+
+	*initiator = (u8 *)&node_acl->node_attrib.acl_serial;
+	*initiator_len = sizeof(node_acl->node_attrib.acl_serial);
+
+	*target = NULL;
+	*target_len = 0;
+}
+
 static int lio_queue_data_in(struct se_cmd *se_cmd)
 {
 	struct iscsi_cmd *cmd = container_of(se_cmd, struct iscsi_cmd, se_cmd);
@@ -1789,6 +1842,7 @@ int iscsi_target_register_configfs(void)
 	fabric->tf_ops.sess_logged_in = &lio_sess_logged_in;
 	fabric->tf_ops.sess_get_index = &lio_sess_get_index;
 	fabric->tf_ops.sess_get_initiator_sid = &lio_sess_get_initiator_sid;
+	fabric->tf_ops.sess_get_i_t_nexus = &lio_sess_get_i_t_nexus;
 	fabric->tf_ops.write_pending = &lio_write_pending;
 	fabric->tf_ops.write_pending_status = &lio_write_pending_status;
 	fabric->tf_ops.set_default_node_attributes =
