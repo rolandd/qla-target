@@ -13,6 +13,7 @@ int	target_emulate_modeselect(struct se_task *task);
 int	target_emulate_request_sense(struct se_task *task);
 int	target_emulate_unmap(struct se_task *task);
 int	target_emulate_write_same(struct se_task *task);
+int	target_emulate_compare_and_write(struct se_task *task);
 int	target_emulate_synchronize_cache(struct se_task *task);
 int	target_emulate_noop(struct se_task *task);
 

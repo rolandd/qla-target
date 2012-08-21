@@ -116,6 +116,7 @@ struct scsi_cmnd;
 #define PERSISTENT_RESERVE_IN 0x5e
 #define PERSISTENT_RESERVE_OUT 0x5f
 #define VARIABLE_LENGTH_CMD   0x7f
+#define COMPARE_AND_WRITE     0x89
 #define REPORT_LUNS           0xa0
 #define SECURITY_PROTOCOL_IN  0xa2
 #define MAINTENANCE_IN        0xa3

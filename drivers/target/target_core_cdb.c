@@ -482,6 +482,11 @@ target_emulate_evpd_b0(struct se_cmd *cmd, unsigned char *buf)
 	buf[4] = 0x01;
 
 	/*
+	 * Set MAXIMUM COMPARE AND WRITE LENGTH
+	 */
+	buf[5] = 1;
+
+	/*
 	 * Set OPTIMAL TRANSFER LENGTH GRANULARITY
 	 */
 	put_unaligned_be16(1, &buf[6]);
@@ -525,6 +530,11 @@ target_emulate_evpd_b0(struct se_cmd *cmd, unsigned char *buf)
 			   &buf[32]);
 	if (dev->se_sub_dev->se_dev_attrib.unmap_granularity_alignment != 0)
 		buf[32] |= 0x80; /* Set the UGAVALID bit */
+
+	/*
+	 * Set MAXIMUM WRITE SAME LENGTH
+	 */
+	put_unaligned_be64(0x10000000, &buf[36]);
 }
 
 /* Block Device Characteristics VPD page */
@@ -1294,11 +1304,38 @@ int target_emulate_unmap(struct se_task *task)
 			goto err;
 		}
 
-		ret = dev->transport->do_discard(dev, lba, range);
-		if (ret < 0) {
-			pr_err("blkdev_issue_discard() failed: %d\n",
-					ret);
-			goto err;
+		if (dev->transport->do_write_same) {
+			/*
+			 * We need to clear our DATA OUT buffer, so we
+			 * can't handle the case where we have
+			 * multiple UNMAP descriptors.  (If we cared,
+			 * we could stash a copy of the UNMAP
+			 * descriptors at the beginning of this
+			 * function and then clear the buffer)
+			 */
+			if (size > 31) {
+				pr_err("Too many UNMAP descriptors for ps_bdrv direct\n");
+				cmd->scsi_sense_reason = TCM_INVALID_CDB_FIELD;
+				ret = -ENOSYS;
+				goto err;
+			}
+
+			memset(buf, 0, dev->se_sub_dev->se_dev_attrib.block_size);
+			transport_kunmap_data_sg(cmd);
+
+			ret = dev->transport->do_write_same(task, lba, range);
+			if (ret < 0)
+				pr_warn("transport write_same lba=%lld range=%lld failed\n",
+					(unsigned long long) lba, (unsigned long long) range);
+
+			return ret;
+		} else {
+			ret = dev->transport->do_discard(dev, lba, range);
+			if (ret < 0) {
+				pr_err("blkdev_issue_discard() failed: %d\n",
+				       ret);
+				goto err;
+			}
 		}
 
 		ptr += 16;
@@ -1325,22 +1362,27 @@ int target_emulate_write_same(struct se_task *task)
 	sector_t range;
 	sector_t lba = cmd->t_task_lba;
 	u32 num_blocks;
+	u8  flags; /* SBC-3: RPROTECT[7:5] ANCHOR[4] UNMAP[3] PBDATA[2] LBDATA[1] OBS[0] */
+	bool unmap;
 	int ret;
 
-	if (!dev->transport->do_discard) {
+	if (!dev->transport->do_discard && !dev->transport->do_write_same) {
 		pr_err("WRITE_SAME emulation not supported"
 				" for: %s\n", dev->transport->name);
 		cmd->scsi_sense_reason = TCM_UNSUPPORTED_SCSI_OPCODE;
 		return -ENOSYS;
 	}
 
-	if (cmd->t_task_cdb[0] == WRITE_SAME)
+	if (cmd->t_task_cdb[0] == WRITE_SAME) {
 		num_blocks = get_unaligned_be16(&cmd->t_task_cdb[7]);
-	else if (cmd->t_task_cdb[0] == WRITE_SAME_16)
+		flags = cmd->t_task_cdb[1];
+	} else if (cmd->t_task_cdb[0] == WRITE_SAME_16) {
 		num_blocks = get_unaligned_be32(&cmd->t_task_cdb[10]);
-	else /* WRITE_SAME_32 via VARIABLE_LENGTH_CMD */
+		flags = cmd->t_task_cdb[1];
+	} else {  /* WRITE_SAME_32 via VARIABLE_LENGTH_CMD */
 		num_blocks = get_unaligned_be32(&cmd->t_task_cdb[28]);
-
+		flags = cmd->t_task_cdb[10];
+	}
 	/*
 	 * Use the explicit range when non zero is supplied, otherwise calculate
 	 * the remaining range based on ->get_blocks() - starting LBA.
@@ -1350,18 +1392,86 @@ int target_emulate_write_same(struct se_task *task)
 	else
 		range = (dev->transport->get_blocks(dev) - lba);
 
-	pr_debug("WRITE_SAME UNMAP: LBA: %llu Range: %llu\n",
-		 (unsigned long long)lba, (unsigned long long)range);
+	pr_debug("WRITE_SAME: LBA: %llu Range: %llu flags: 0x%x\n",
+		 (unsigned long long)lba, (unsigned long long)range, flags);
 
-	ret = dev->transport->do_discard(dev, lba, range);
-	if (ret < 0) {
-		pr_debug("blkdev_issue_discard() failed for WRITE_SAME\n");
+	unmap = !!(flags & 8);
+	if (unmap) {
+		unsigned long *buf = transport_kmap_data_sg(cmd);
+		if (find_first_bit(buf, 512 * 8) != 512 * 8)
+			pr_info_ratelimited("initiator %s did WRITE SAME (%02xh) with UNMAP but non-zero data\n",
+					    cmd->se_sess->se_node_acl->initiatorname, cmd->t_task_cdb[0]);
+		transport_kunmap_data_sg(cmd);
+	}
+
+	if (dev->transport->do_write_same) {
+		/* We have a transport that can handle write_same directly */
+
+		/*
+		 * SBC-3 says:
+		 *
+		 * The device server shall perform the write operation
+		 * specified by a WRITE SAME command, and shall not
+		 * perform any unmap operations, if the device server
+		 * sets the LBPRZ bit to one in the READ CAPACITY (16)
+		 * parameter data (see 5.16.2), and:
+		 *
+		 * a) any bit in the user data transferred from the
+		 * Data-Out Buffer is not zero; or
+		 * b) the protection information, if any, transferred
+		 * from the Data-Out Buffer is not set to
+		 * FFFF_FFFF_FFFF_FFFFh.
+		 *
+		 * In other words, whatever the initiator sent us is
+		 * what we should pass through; foed will take care of
+		 * treating all 0 sectors as unmaps.
+		 */
+
+		ret = dev->transport->do_write_same(task, lba, range);
+		if (ret < 0)
+			pr_warn("transport write_same lba=%lld range=%lld failed\n",
+				(unsigned long long) lba, (unsigned long long) range);
+
 		return ret;
+	} else {
+		/* We can do discard if UNMAP (flags[3]) is set, otherwise fail */
+		if (!unmap)
+			return -ENOSYS;
+
+		ret = dev->transport->do_discard(dev, lba, range);
+		if (ret < 0) {
+			pr_debug("blkdev_issue_discard() failed for WRITE_SAME\n");
+			return ret;
+		}
 	}
 
 	task->task_scsi_status = GOOD;
 	transport_complete_task(task, 1);
 	return 0;
+}
+
+int target_emulate_compare_and_write(struct se_task *task)
+{
+	struct se_cmd *cmd = task->task_se_cmd;
+	struct se_device *dev = cmd->se_dev;
+	u32 range;
+	int ret;
+
+	if (!dev->transport->do_compare_and_write) {
+		pr_err("COMPARE_AND_WRITE emulation not supported"
+				" for: %s\n", dev->transport->name);
+		cmd->scsi_sense_reason = TCM_UNSUPPORTED_SCSI_OPCODE;
+		return -ENOSYS;
+	}
+
+	range = cmd->t_task_cdb[13];
+
+	ret = dev->transport->do_compare_and_write(task, range);
+	if (ret < 0)
+		pr_warn("transport COMPARE_AND_WRITE failed (lba %llu, range %u)\n",
+			(unsigned long long) cmd->t_task_lba, range);
+
+	return ret;
 }
 
 int target_emulate_synchronize_cache(struct se_task *task)

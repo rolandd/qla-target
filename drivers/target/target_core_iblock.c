@@ -56,6 +56,7 @@
 static struct se_subsystem_api iblock_template;
 
 static void iblock_bio_done(struct bio *, int);
+static void iblock_caw_bio_done(struct bio *, int);
 
 /*	iblock_attach_hba(): (Part of se_subsystem_api_t template)
  *
@@ -221,6 +222,28 @@ static void iblock_ps_endio(struct ps_ioreq *iop, void *cmd_ptr, int error)
 	struct se_cmd *cmd = cmd_ptr;
 	/* We assume we only have one task if we're using ps_ioreqs */
 	struct se_task *task = list_first_entry(&cmd->t_task_list, struct se_task, t_list);
+
+	if (cmd->ps_opcode == PS_IO_COMPARE_AND_WRITE && error >= 0) {
+		if (error < cmd->data_length) {
+			u8 *buf = cmd->sense_buffer;
+
+			cmd->scsi_sense_reason = TCM_MISCOMPARE_DURING_VERIFY;
+			cmd->scsi_status = SAM_STAT_CHECK_CONDITION;
+			cmd->scsi_sense_length = 18;
+
+			/* CURRENT ERROR with VALID set*/
+			buf[0] = 0x70 | 0x80;
+			buf[SPC_ADD_SENSE_LEN_OFFSET] = 10;
+			/* MISCOMPARE */
+			buf[SPC_SENSE_KEY_OFFSET] = MISCOMPARE;
+			/* MISCOMPARE DURING VERIFY OPERATION */
+			buf[SPC_ASC_KEY_OFFSET] = 0x1D;
+			buf[SPC_ASCQ_KEY_OFFSET] = 0x00;
+			/* Miscompare offset in INFORMATION field */
+			put_unaligned_be32(error, &buf[3]);
+		}
+		error = 0;
+	}
 
 	/* We assume we only have one task if we're using ps_ioreqs */
 	transport_complete_task(task, !error);
@@ -686,6 +709,174 @@ fail:
 	return -ENOMEM;
 }
 
+static int iblock_do_write_same(struct se_task *task, sector_t lba, u32 range)
+{
+	struct se_cmd *cmd = task->task_se_cmd;
+	struct se_device *dev = cmd->se_dev;
+	struct iblock_req *ibr = IBLOCK_REQ(task);
+	struct iblock_dev *ibd = dev->dev_ptr;
+	struct block_device *bd = ibd->ibd_bd;
+	struct request_queue *q = bd->bd_disk->queue;
+	struct bio *bio;
+	struct scatterlist *sg;
+	u32 i, sg_num = task->task_sg_nents;
+	sector_t block_lba;
+	int ret;
+
+	/*
+	 * Do starting conversion up from non 512-byte blocksize with
+	 * struct se_task SCSI blocksize into Linux/Block 512 units for BIO.
+	 */
+	if (dev->se_sub_dev->se_dev_attrib.block_size == 4096)
+		block_lba = (lba << 3);
+	else if (dev->se_sub_dev->se_dev_attrib.block_size == 2048)
+		block_lba = (lba << 2);
+	else if (dev->se_sub_dev->se_dev_attrib.block_size == 1024)
+		block_lba = (lba << 1);
+	else if (dev->se_sub_dev->se_dev_attrib.block_size == 512)
+		block_lba = lba;
+	else {
+		pr_err("Unsupported SCSI -> BLOCK LBA conversion:"
+				" %u\n", dev->se_sub_dev->se_dev_attrib.block_size);
+		cmd->scsi_sense_reason = TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;
+		return -ENOSYS;
+	}
+
+	if (cmd->ps_iop) {
+		iblock_ps_exec(bdev_get_queue(bd), cmd, block_lba, range << 9);
+		return 0;
+	}
+
+	if (!q->write_same_fn) {
+		cmd->scsi_sense_reason = TCM_UNSUPPORTED_SCSI_OPCODE;
+		return -EIO;
+	}
+
+	bio = iblock_get_bio(task, block_lba, sg_num);
+	if (!bio) {
+		cmd->scsi_sense_reason = TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;
+		return -ENOMEM;
+	}
+
+	for_each_sg(task->task_sg, sg, task->task_sg_nents, i)
+		/* the data should fit in a single BIO.  Fail if it doesn't. */
+		if (bio_add_page(bio, sg_page(sg), sg->length, sg->offset)
+		    != sg->length) {
+			pr_err("write_same buffer spans more than one bio.\n");
+			goto fail;
+		}
+
+	pr_debug("Submitting write_same: %p bio: %p"
+		 " bio->bi_sector: %llu\n", task, bio, (unsigned long long) bio->bi_sector);
+	ret = q->write_same_fn(q, block_lba, range, bio);
+
+	if (atomic_dec_and_test(&ibr->pending)) {
+		transport_complete_task(task,
+				!atomic_read(&ibr->ib_bio_err_cnt));
+	}
+
+	return ret;
+
+fail:
+	bio_put(bio);
+	cmd->scsi_sense_reason = TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;
+	return -ENOMEM;
+}
+
+static int iblock_do_compare_and_write(struct se_task *task, u32 range)
+{
+	struct se_cmd *cmd = task->task_se_cmd;
+	struct se_device *dev = cmd->se_dev;
+	struct iblock_req *ib_req = IBLOCK_REQ(task);
+	struct iblock_dev *ibd = dev->dev_ptr;
+	struct block_device *bd = ibd->ibd_bd;
+	struct request_queue *q = bd->bd_disk->queue;
+	struct bio *bio;
+	struct scatterlist *sg;
+	u32 i, sg_num = task->task_sg_nents;
+	sector_t block_lba;
+	unsigned int bio_size;
+	int ret;
+
+	/*
+	 * Do starting conversion up from non 512-byte blocksize with
+	 * struct se_task SCSI blocksize into Linux/Block 512 units for BIO.
+	 */
+	if (dev->se_sub_dev->se_dev_attrib.block_size == 4096)
+		block_lba = (task->task_lba << 3);
+	else if (dev->se_sub_dev->se_dev_attrib.block_size == 2048)
+		block_lba = (task->task_lba << 2);
+	else if (dev->se_sub_dev->se_dev_attrib.block_size == 1024)
+		block_lba = (task->task_lba << 1);
+	else if (dev->se_sub_dev->se_dev_attrib.block_size == 512)
+		block_lba = task->task_lba;
+	else {
+		pr_err("Unsupported SCSI -> BLOCK LBA conversion:"
+				" %u\n", dev->se_sub_dev->se_dev_attrib.block_size);
+		cmd->scsi_sense_reason = TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;
+		return -ENOSYS;
+	}
+
+	if (cmd->ps_iop) {
+		iblock_ps_exec(bdev_get_queue(bd), cmd, block_lba, 0);
+		return 0;
+	}
+
+	if (!q->compare_and_write_fn) {
+		cmd->scsi_sense_reason = TCM_UNSUPPORTED_SCSI_OPCODE;
+		return -EIO;
+	}
+
+	bio = iblock_get_bio(task, block_lba, sg_num);
+	if (!bio) {
+		cmd->scsi_sense_reason = TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;
+		return -ENOMEM;
+	}
+
+	/*
+	 * Use an alternate bio_done callback that can return extended
+	 * sense data.
+	 */
+	bio->bi_end_io = &iblock_caw_bio_done;
+
+	for_each_sg(task->task_sg, sg, task->task_sg_nents, i)
+		/* the data should fit in a single BIO.  Fail if it doesn't. */
+		if (bio_add_page(bio, sg_page(sg), sg->length, sg->offset)
+		    != sg->length) {
+			pr_err("compare_and_write buffer spans more than one bio.\n");
+			goto fail;
+		}
+
+	bio_size = bio->bi_size;
+
+	pr_debug("Submitting compare_and_write: %p bio: %p"
+		 " bio->bi_sector: %llu\n", task, bio, (unsigned long long) bio->bi_sector);
+	ret = q->compare_and_write_fn(q, block_lba, range, bio, &ib_req->cmd_retval);
+
+	if (atomic_dec_and_test(&ib_req->pending)) {
+		/* Return failure status for task if ib_bio_err_cnt > 0. */
+		if (atomic_read(&ib_req->ib_bio_err_cnt))
+			transport_complete_task(task, 0);
+		/* If cmd_retval < bio length, return miscompare */
+		else if (ib_req->cmd_retval < bio_size) {
+			/* printk("retiring caw with retval %llu\n", ib_req->cmd_retval); */
+			cmd->private = ib_req->cmd_retval;
+			cmd->scsi_sense_reason = TCM_MISCOMPARE_DURING_VERIFY;
+			transport_complete_task(task, 0);
+		} else {
+			/* Return GOOD status */
+			transport_complete_task(task, 1);
+		}
+	}
+
+	return ret;
+
+fail:
+	bio_put(bio);
+	cmd->scsi_sense_reason = TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;
+	return -ENOMEM;
+}
+
 static u32 iblock_get_device_rev(struct se_device *dev)
 {
 	return SCSI_SPC_3; /* Return SPC-4 in Initiator Data */
@@ -738,6 +929,62 @@ static void iblock_bio_done(struct bio *bio, int err)
 	transport_complete_task(task, !atomic_read(&ibr->ib_bio_err_cnt));
 }
 
+/*
+ * Specialized bio_done for compare_and_write, because it needs
+ * to return special SCSI sense data.
+ */
+static void iblock_caw_bio_done(struct bio *bio, int err)
+{
+	/* Starting here, this function is nearly identical to iblock_bio_done() */
+	struct se_task *task = bio->bi_private;
+	struct se_cmd *cmd = task->task_se_cmd;
+	struct iblock_req *ibr = IBLOCK_REQ(task);
+	unsigned int bio_size;
+
+	/*
+	 * Set -EIO if !BIO_UPTODATE and the passed is still err=0
+	 */
+	if (!(test_bit(BIO_UPTODATE, &bio->bi_flags)) && !(err))
+		err = -EIO;
+
+	if (err != 0) {
+		pr_err("CAW IO error for bio: se_cmd %p, err %d, pending %d\n",
+		       task->task_se_cmd, err, atomic_read(&ibr->pending));
+		/*
+		 * Bump the ib_bio_err_cnt and release bio.
+		 */
+		atomic_inc(&ibr->ib_bio_err_cnt);
+		smp_mb__after_atomic_inc();
+	}
+
+	bio_size = bio->bi_size;
+	bio_put(bio);
+
+	if (!atomic_dec_and_test(&ibr->pending))
+		return;
+
+	pr_debug("done[%p] bio: %p task_lba: %llu bio_lba: %llu err=%d\n",
+		 task, bio, task->task_lba,
+		 (unsigned long long)bio->bi_sector, err);
+
+	/* This is the end of similarity with iblock_bio_done() */
+
+	/* Return failure status for task if ib_bio_err_cnt > 0. */
+	if (atomic_read(&ibr->ib_bio_err_cnt))
+		transport_complete_task(task, 0);
+
+	/* If cmd_retval < bio length, return miscompare */
+	else if (ibr->cmd_retval < bio_size) {
+		/* printk("retiring caw with retval %llu\n", ibr->cmd_retval); */
+		cmd->private = ibr->cmd_retval;
+		cmd->scsi_sense_reason = TCM_MISCOMPARE_DURING_VERIFY;
+		transport_complete_task(task, 0);
+	} else {
+		/* Return GOOD status */
+		transport_complete_task(task, 1);
+	}
+}
+
 static struct se_subsystem_api iblock_template = {
 	.name			= "iblock",
 	.owner			= THIS_MODULE,
@@ -754,6 +1001,9 @@ static struct se_subsystem_api iblock_template = {
 	.free_cmd_mem		= iblock_free_cmd_mem,
 	.do_task		= iblock_do_task,
 	.do_discard		= iblock_do_discard,
+	 /* FIXME: make conditional on pure device? */
+	.do_write_same          = iblock_do_write_same,
+	.do_compare_and_write   = iblock_do_compare_and_write,
 	.do_sync_cache		= iblock_emulate_sync_cache,
 	.free_task		= iblock_free_task,
 	.check_configfs_dev_params = iblock_check_configfs_dev_params,

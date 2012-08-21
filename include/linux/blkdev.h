@@ -238,7 +238,8 @@ typedef enum blk_eh_timer_return (rq_timed_out_fn)(struct request *);
 struct ps_ioreq;
 
 /*
- * error < 0 means IO error.
+ * error < 0 means IO error.  For COMPARE AND WRITE, error >= 0 is
+ * offset of miscompare (error == data_length means success).
  */
 typedef void ps_buf_end_io_fn(struct ps_ioreq *iop, void *private, int error);
 
@@ -432,6 +433,12 @@ struct request_queue
 	/* Throttle data */
 	struct throtl_data *td;
 #endif
+	int (*write_same_fn) (struct request_queue *q, sector_t sector,
+		u32 range, struct bio *bio);
+	int (*compare_and_write_fn) (struct request_queue *q, sector_t sector,
+		u32 range, struct bio *bio, u64* miscompare);
+
+
 	alloc2_ps_buf_fn        *alloc_ps_buf_fn;
 	exec2_ps_buf_fn		*exec_ps_buf_fn;
 	free_ps_buf_fn		*free_ps_buf_fn;

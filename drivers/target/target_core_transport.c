@@ -2574,11 +2574,11 @@ static int target_check_write_same_discard(unsigned char *flags, struct se_devic
 		 * Currently for the emulated case we only accept
 		 * tpws with the UNMAP=1 bit set.
 		 */
-		if (!(flags[0] & 0x08)) {
+		/*if (!(flags[0] & 0x08)) {
 			pr_err("WRITE_SAME w/o UNMAP bit not"
 				" supported for Block Discard Emulation\n");
 			return -ENOSYS;
-		}
+		}*/
 	}
 
 	return 0;
@@ -3087,8 +3087,21 @@ static int transport_generic_cmd_sequencer(
 	case UNMAP:
 		size = get_unaligned_be16(&cdb[7]);
 		cmd->se_cmd_flags |= SCF_SCSI_CONTROL_SG_IO_CDB;
+		cmd->ps_opcode = PS_IO_WRITE_SAME;
 		if (!passthrough)
 			cmd->execute_task = target_emulate_unmap;
+		break;
+	case COMPARE_AND_WRITE:
+		/* FIXME: reject command if size is larger than supported */
+		sectors = cdb[13];
+		/* Double size because we have two buffers */
+		/* Note zero size is not an error */
+		size = 2 * transport_get_size(sectors, cdb, cmd);
+		cmd->t_task_lba = transport_lba_64(cdb);
+		cmd->se_cmd_flags |= SCF_SCSI_DATA_SG_IO_CDB;
+		cmd->ps_opcode = PS_IO_COMPARE_AND_WRITE;
+		if (!passthrough)
+			cmd->execute_task = target_emulate_compare_and_write;
 		break;
 	case WRITE_SAME_16:
 		sectors = transport_get_sectors_16(cdb, cmd, &sector_ret);
@@ -3104,6 +3117,7 @@ static int transport_generic_cmd_sequencer(
 
 		cmd->t_task_lba = get_unaligned_be64(&cdb[2]);
 		cmd->se_cmd_flags |= SCF_SCSI_CONTROL_SG_IO_CDB;
+		cmd->ps_opcode = PS_IO_WRITE_SAME;
 
 		if (target_check_write_same_discard(&cdb[1], dev) < 0)
 			goto out_unsupported_cdb;
@@ -3124,6 +3138,7 @@ static int transport_generic_cmd_sequencer(
 
 		cmd->t_task_lba = get_unaligned_be32(&cdb[2]);
 		cmd->se_cmd_flags |= SCF_SCSI_CONTROL_SG_IO_CDB;
+		cmd->ps_opcode = PS_IO_WRITE_SAME;
 		/*
 		 * Follow sbcr26 with WRITE_SAME (10) and check for the existence
 		 * of byte 1 bit 3 UNMAP instead of original reserved field
@@ -3399,6 +3414,21 @@ static void target_complete_ok_work(struct work_struct *work)
 			return;
 		}
 	}
+
+	/*
+	 * See if we have status / sense data from ps_bdrv.
+	 */
+	if (cmd->scsi_status != SAM_STAT_GOOD) {
+		cmd->se_cmd_flags |= SCF_EMULATED_TASK_SENSE;
+		ret = transport_send_check_condition_and_sense(cmd, 0, 1);
+		if (ret == -EAGAIN || ret == -ENOMEM)
+			goto queue_full;
+
+		transport_lun_remove_cmd(cmd);
+		transport_cmd_check_stop_to_fabric(cmd);
+		return;
+	}
+
 	/*
 	 * Check for a callback, used by amongst other things
 	 * XDWRITE_READ_10 emulation.
@@ -4659,6 +4689,18 @@ int transport_send_check_condition_and_sense(
 		buffer[SPC_ASC_KEY_OFFSET] = asc;
 		buffer[SPC_ASCQ_KEY_OFFSET] = ascq;
 		break;
+	case TCM_MISCOMPARE_DURING_VERIFY:
+		/* CURRENT ERROR with VALID set*/
+		buffer[0] = 0x70 | 0x80;
+		/* MISCOMPARE */
+		buffer[SPC_SENSE_KEY_OFFSET] = MISCOMPARE;
+		/* MISCOMPARE DURING VERIFY OPERATION */
+		buffer[SPC_ASC_KEY_OFFSET] = 0x1D;
+		buffer[SPC_ASCQ_KEY_OFFSET] = 0x00;
+		/* Miscompare offset in INFORMATION field */
+		put_unaligned_be32(cmd->private, &buffer[3]);
+		break;
+
 	case TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE:
 	default:
 		/* CURRENT ERROR */

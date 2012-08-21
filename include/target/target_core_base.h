@@ -188,6 +188,7 @@ enum se_cmd_flags_table {
 	SCF_UNUSED			= 0x00100000,
 	SCF_PASSTHROUGH_SG_TO_MEM_NOALLOC = 0x00200000,
 	SCF_ACK_KREF			= 0x00400000,
+	SCF_OFFLOAD_SCSI_RESERVATION	= 0x00800000,
 };
 
 /* struct se_dev_entry->lun_flags and struct se_lun->lun_access */
@@ -229,6 +230,7 @@ enum tcm_sense_reason_table {
 	TCM_CHECK_CONDITION_UNIT_ATTENTION	= 0x0e,
 	TCM_CHECK_CONDITION_NOT_READY		= 0x0f,
 	TCM_RESERVATION_CONFLICT		= 0x10,
+	TCM_MISCOMPARE_DURING_VERIFY		= 0x11,
 	TCM_ADDRESS_OUT_OF_RANGE		= 0x12,
 };
 
@@ -556,6 +558,8 @@ struct se_cmd {
 	u32			orig_fe_lun;
 	/* Persistent Reservation key */
 	u64			pr_res_key;
+	/* Hacked in so CAW can return information in sense data */
+	u64			private;
 	/* Used for sense data */
 	void			*sense_buffer;
 	struct list_head	se_delayed_node;
