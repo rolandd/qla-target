@@ -43,6 +43,7 @@ struct se_subsystem_api {
 	u32 (*get_device_type)(struct se_device *);
 	sector_t (*get_blocks)(struct se_device *);
 	unsigned char *(*get_sense_buffer)(struct se_task *);
+	const char * (*get_volume_name)(struct se_device *);
 };
 
 int	transport_subsystem_register(struct se_subsystem_api *);

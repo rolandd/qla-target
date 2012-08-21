@@ -211,6 +211,8 @@ target_emulate_evpd_83(struct se_cmd *cmd, unsigned char *buf)
 	u32 prod_len;
 	u32 unit_serial_len, off = 0;
 	u16 len = 0, id_len;
+	const char *volume_name;
+	u8    volume_name_len;
 
 	off = 4;
 
@@ -443,6 +445,22 @@ check_scsi_name:
 		/* Header size + Designation descriptor */
 		len += (scsi_name_len + 4);
 	}
+
+	/* Add vendor-specific name */
+	if (dev->transport->get_volume_name &&
+	    (volume_name = dev->transport->get_volume_name(dev))) {
+		volume_name_len = min_t(u8, strlen(volume_name), 64);
+		buf[off++] = 0x3; /* CODE SET == UTF-8 */
+		/* Set PIV=0, Set ASSOCIATION == lun, DESIGNATOR TYPE == SCSI name string */
+		buf[off++] = 0x8;
+		off++; /* Skip over Reserved*/
+		buf[off++] = volume_name_len;
+		strncpy(&buf[off], volume_name, volume_name_len);
+		off += volume_name_len;
+		/* Header size + Designation descriptor */
+		len += (volume_name_len + 4);
+	}
+
 	buf[2] = ((len >> 8) & 0xff);
 	buf[3] = (len & 0xff); /* Page Length for VPD 0x83 */
 }

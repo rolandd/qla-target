@@ -887,6 +887,17 @@ static u32 iblock_get_device_type(struct se_device *dev)
 	return TYPE_DISK;
 }
 
+static const char * iblock_get_device_volume_name(struct se_device *dev)
+{
+	struct iblock_dev *ibd = dev->dev_ptr;
+	struct block_device *bd = ibd->ibd_bd;
+	struct request_queue *q = bdev_get_queue(bd);
+
+	if (q->get_ps_volname_fn)
+		return q->get_ps_volname_fn(q);
+	return NULL;
+}
+
 static sector_t iblock_get_blocks(struct se_device *dev)
 {
 	struct iblock_dev *ibd = dev->dev_ptr;
@@ -1012,6 +1023,7 @@ static struct se_subsystem_api iblock_template = {
 	.get_device_rev		= iblock_get_device_rev,
 	.get_device_type	= iblock_get_device_type,
 	.get_blocks		= iblock_get_blocks,
+	.get_volume_name        = iblock_get_device_volume_name,
 };
 
 static int __init iblock_module_init(void)
