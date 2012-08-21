@@ -1596,15 +1596,18 @@ static void lio_sess_get_i_t_nexus(struct se_cmd *se_cmd,
 				    const u8 **initiator, size_t *initiator_len,
 				    const u8 **target, size_t *target_len)
 {
+	struct se_session *se_sess = se_cmd->se_sess;
+	struct iscsi_session *sess = se_sess->fabric_sess_ptr;
 	struct iscsi_node_acl *node_acl = container_of(
-		se_cmd->se_sess->se_node_acl, struct iscsi_node_acl,
+		se_sess->se_node_acl, struct iscsi_node_acl,
 		se_node_acl);
 
 	*initiator = (u8 *)&node_acl->node_attrib.acl_serial;
 	*initiator_len = sizeof(node_acl->node_attrib.acl_serial);
 
-	*target = NULL;
-	*target_len = 0;
+	/* HACK: Put the ISID into the target member */
+	*target = sess->isid;
+	*target_len = sizeof(sess->isid);
 }
 
 static int lio_queue_data_in(struct se_cmd *se_cmd)
