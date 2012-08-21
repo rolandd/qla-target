@@ -41,6 +41,10 @@
 #include "target_core_pr.h"
 #include "target_core_ua.h"
 
+bool target_core_offload_pr = true;
+module_param_named(offload_pr, target_core_offload_pr, bool, S_IRUGO);
+MODULE_PARM_DESC(offload_pr, "Offload persistent reservations (default=true)");
+
 /*
  * Used for Specify Initiator Ports Capable Bit (SPEC_I_PT)
  */
@@ -200,6 +204,9 @@ int target_scsi2_reservation_release(struct se_task *task)
 	struct se_portal_group *tpg = sess->se_tpg;
 	int ret = 0;
 
+	if (target_core_offload_pr && cmd->ps_iop)
+		return cmd->se_dev->transport->do_persistent_reserve(task, 0, 0, 0);
+
 	if (target_check_scsi2_reservation_conflict(cmd, &ret))
 		goto out;
 
@@ -239,6 +246,9 @@ int target_scsi2_reservation_reserve(struct se_task *task)
 	struct se_session *sess = cmd->se_sess;
 	struct se_portal_group *tpg = sess->se_tpg;
 	int ret = 0;
+
+	if (target_core_offload_pr && cmd->ps_iop)
+		return cmd->se_dev->transport->do_persistent_reserve(task, 0, 0, 0);
 
 	if ((cmd->t_task_cdb[1] & 0x01) &&
 	    (cmd->t_task_cdb[1] & 0x02)) {
@@ -3785,6 +3795,13 @@ int target_scsi3_emulate_pr_out(struct se_task *task)
 	int spec_i_pt = 0, all_tg_pt = 0, unreg = 0;
 	int ret;
 
+	if (target_core_offload_pr && cmd->ps_iop) {
+		sa = cdb[1] & 0x1f;
+		scope = cdb[2] >> 4;
+		type = cdb[2] & 0x0f;
+		return cmd->se_dev->transport->do_persistent_reserve(task, sa, scope, type);
+	}
+
 	/*
 	 * Following spc2r20 5.5.1 Reservations overview:
 	 *
@@ -4281,6 +4298,9 @@ int target_scsi3_emulate_pr_in(struct se_task *task)
 	struct se_cmd *cmd = task->task_se_cmd;
 	int ret;
 
+	if (target_core_offload_pr && cmd->ps_iop)
+		return cmd->se_dev->transport->do_persistent_reserve(task, cmd->t_task_cdb[1] & 0x1f, 0, 0);
+
 	/*
 	 * Following spc2r20 5.5.1 Reservations overview:
 	 *
@@ -4339,6 +4359,70 @@ static int core_pt_seq_non_holder(
 	return 0;
 }
 
+static int core_offload_pr_reservation_check(struct se_cmd *cmd, u32 *pr_reg_type)
+{
+	/*
+	 * A legacy SPC-2 reservation is being held.
+	 */
+	if (cmd->se_dev->dev_flags & DF_SPC2_RESERVATIONS)
+		return core_scsi2_reservation_check(cmd, pr_reg_type);
+
+	/* All requests are passed through into pr_seq_non_holder */
+	return 1;
+}
+
+static int core_offload_pr_seq_non_holder(struct se_cmd *cmd, unsigned char *cdb,
+					  u32 pr_reg_type)
+{
+	if (cmd->se_dev->dev_flags & DF_SPC2_RESERVATIONS)
+		return core_scsi2_reservation_seq_non_holder(cmd, cdb,
+							     pr_reg_type);
+
+	/* Since we have no visibility of the current registration state,
+	 * offload all requests accept for: */
+	switch (cdb[0]) {
+		/* Requests that we will otherwise pass through to the backend */
+	case READ_6:
+	case READ_10:
+	case READ_12:
+	case READ_16:
+	case WRITE_6:
+	case WRITE_10:
+	case WRITE_VERIFY:
+	case WRITE_12:
+	case WRITE_16:
+	case UNMAP:
+	case COMPARE_AND_WRITE:
+	case WRITE_SAME_16:
+	case WRITE_SAME:
+	case XDWRITEREAD_10:
+	case PERSISTENT_RESERVE_IN:
+	case PERSISTENT_RESERVE_OUT:
+	case RESERVE:
+	case RELEASE:
+		return 0;
+	case VARIABLE_LENGTH_CMD:
+		if (get_unaligned_be16(&cdb[8]) == WRITE_SAME_32)
+			return 0;
+        /* A subset of requests that do not need an offload check
+         * See: SPC-4 Table 67
+         * Note: this means that for these ops we are not delivering
+         * any foed generated UA.
+         */
+        case TEST_UNIT_READY:
+        case INQUIRY:
+        case REPORT_LUNS:
+                pr_debug("bypass OFFLOAD_SCSI_RESERVATION for scsiop %d\n", cdb[0]);
+                return 0;
+	}
+
+	pr_debug("Setting OFFLOAD_SCSI_RESERVATION for scsiop %d\n", cdb[0]);
+	cmd->se_cmd_flags |= SCF_OFFLOAD_SCSI_RESERVATION;
+
+	/* The sequencer will now deal with satisfying the reservation request */
+	return 0;
+}
+
 int core_setup_reservations(struct se_device *dev, int force_pt)
 {
 	struct se_subsystem_dev *su_dev = dev->se_sub_dev;
@@ -4363,11 +4447,20 @@ int core_setup_reservations(struct se_device *dev, int force_pt)
 	 * use emulated Persistent Reservations.
 	 */
 	if (dev->transport->get_device_rev(dev) >= SCSI_3) {
-		rest->res_type = SPC3_PERSISTENT_RESERVATIONS;
-		rest->pr_ops.t10_reservation_check = &core_scsi3_pr_reservation_check;
-		rest->pr_ops.t10_seq_non_holder = &core_scsi3_pr_seq_non_holder;
-		pr_debug("%s: Using SPC3_PERSISTENT_RESERVATIONS"
-			" emulation\n", dev->transport->name);
+		if (target_core_offload_pr) {
+			rest->res_type = SPC3_OFFLOADED_RESERVATIONS;
+			rest->pr_ops.t10_reservation_check = &core_offload_pr_reservation_check;
+			rest->pr_ops.t10_seq_non_holder = &core_offload_pr_seq_non_holder;
+			pr_debug("%s: Using SPC3_OFFLOADED_RESERVATIONS\n",
+				 dev->transport->name);
+		} else {
+			rest->res_type = SPC3_PERSISTENT_RESERVATIONS;
+			rest->pr_ops.t10_reservation_check = &core_scsi3_pr_reservation_check;
+			rest->pr_ops.t10_seq_non_holder = &core_scsi3_pr_seq_non_holder;
+			pr_debug("%s: Using SPC3_PERSISTENT_RESERVATIONS"
+				 " emulation\n", dev->transport->name);
+		}
+
 	} else {
 		rest->res_type = SPC2_RESERVATIONS;
 		rest->pr_ops.t10_reservation_check = &core_scsi2_reservation_check;

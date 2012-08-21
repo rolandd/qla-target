@@ -249,6 +249,93 @@ static void iblock_ps_endio(struct ps_ioreq *iop, void *cmd_ptr, int error)
 	transport_complete_task(task, !error);
 }
 
+static void iblock_ps_endpr(struct ps_ioreq *iop, void *cmd_ptr, int error)
+{
+	struct se_cmd *cmd = cmd_ptr;
+	/* We assume we only have one task if we're using ps_ioreqs */
+	struct se_task *task = list_first_entry(&cmd->t_task_list, struct se_task, t_list);
+
+	if (error) {
+		/* All errors are interpreted as a reservation conflict */
+		cmd->se_cmd_flags |= SCF_SCSI_CDB_EXCEPTION;
+		cmd->se_cmd_flags |= SCF_SCSI_RESERVATION_CONFLICT;
+		cmd->scsi_sense_reason = TCM_RESERVATION_CONFLICT;
+
+		transport_complete_task(task, 1);
+		return;
+	}
+
+	/*
+	 * Special case handling of REQUEST SENSE: if we get sense
+	 * data back, we move it into the data in buffer to send back
+	 * to the initiator that way.  In any case, we can complete
+	 * the command with good status.
+	 */
+	if (cmd->t_task_cdb[0] == REQUEST_SENSE) {
+		u8 *buf;
+
+		buf = transport_kmap_data_sg(cmd);
+
+		if (cmd->scsi_status) {
+			memcpy(buf, cmd->sense_buffer, 18);
+			cmd->scsi_status = 0;
+		} else {
+			/*
+			 * CURRENT ERROR, NO SENSE
+			 */
+			buf[0] = 0x70;
+			buf[SPC_SENSE_KEY_OFFSET] = NO_SENSE;
+
+			/*
+			 * NO ADDITIONAL SENSE INFORMATION
+			 */
+			buf[SPC_ASC_KEY_OFFSET] = 0x00;
+			buf[7] = 0x0A;
+		}
+
+		transport_kunmap_data_sg(cmd);
+
+		error = 18;
+	} else {
+		/*
+		 * XXX: Is it ok to execute cmd->execute_task() from this
+		 * context, or do some of them now assume they're run from the
+		 * same context?
+		 */
+		if (cmd->execute_task)
+			error = cmd->execute_task(task);
+		else
+			WARN(1, "iblock_ps_endpr called without execute_task");
+	}
+
+	if (error < 0) {
+		unsigned long flags;
+
+		spin_lock_irqsave(&cmd->t_state_lock, flags);
+		task->task_flags &= ~TF_ACTIVE;
+		cmd->transport_state &= ~CMD_T_SENT;
+		spin_unlock_irqrestore(&cmd->t_state_lock, flags);
+
+		/* There's only one task (us) and it's not really been started
+		 * yet, so we don't need to stop it */
+		transport_generic_request_failure(cmd);
+	} else if (error > 0) {
+		if (error < cmd->data_length) {
+			if (cmd->se_cmd_flags & SCF_UNDERFLOW_BIT) {
+				cmd->residual_count += cmd->data_length - error;
+			} else {
+				cmd->se_cmd_flags |= SCF_UNDERFLOW_BIT;
+				cmd->residual_count = cmd->data_length - error;
+			}
+
+			cmd->data_length = error;
+		}
+
+		task->task_scsi_status = GOOD;
+		transport_complete_task(task, 1);
+	}
+}
+
 static struct ps_ioreq * iblock_ps_alloc(struct request_queue *q,
 					 struct se_cmd *cmd, unsigned size,
 					 int opcode, ps_buf_end_io_fn endio,
@@ -281,7 +368,15 @@ static int iblock_alloc_cmd_mem(struct se_cmd *cmd)
 	if (cmd->ps_opcode == PS_IO_WRITE_SAME)
 		alloc_size = max(alloc_size, 1u << 9);
 
-	iop = iblock_ps_alloc(q, cmd, alloc_size, cmd->ps_opcode, iblock_ps_endio, cmd);
+	if ((cmd->se_cmd_flags & SCF_OFFLOAD_SCSI_RESERVATION) && !cmd->ps_opcode) {
+		/* Flow control PR offload requests by ensuring we allocate at
+		 * least some space from the buffer pool */
+		iop = iblock_ps_alloc(q, cmd, alloc_size,
+				      PS_IO_PR_OFFLOAD, iblock_ps_endpr, cmd);
+	} else {
+		iop = iblock_ps_alloc(q, cmd, alloc_size, cmd->ps_opcode, iblock_ps_endio, cmd);
+	}
+
 	if (IS_ERR(iop))
 		return PTR_ERR(iop);
 	else
@@ -877,6 +972,50 @@ fail:
 	return -ENOMEM;
 }
 
+static int iblock_do_pr_offload(struct se_task *task)
+{
+	struct se_cmd *cmd = task->task_se_cmd;
+	struct se_device *dev = cmd->se_dev;
+
+	if (cmd->ps_iop) {
+		struct iblock_dev *ib_dev = dev->dev_ptr;
+		struct request_queue *q = bdev_get_queue(ib_dev->ibd_bd);
+
+		iblock_ps_exec(q, cmd, cmd->t_task_lba, cmd->t_task_cdb[0] | (cmd->t_task_cdb[1] << 8));
+		return 0;
+	}
+
+	return -EACCES;
+}
+
+static int iblock_do_persistent_reserve(struct se_task *task, u8 sa, u8 scope, u8 type)
+{
+	struct se_cmd *cmd = task->task_se_cmd;
+	struct se_device *dev = cmd->se_dev;
+	union {
+		u64		xparam;
+		struct {
+			u8	sa;
+			u8	scope;
+			u8	type;
+		};
+	} u;
+
+	if (cmd->ps_iop) {
+		struct iblock_dev *ib_dev = dev->dev_ptr;
+		struct request_queue *q = bdev_get_queue(ib_dev->ibd_bd);
+
+		u.sa = sa;
+		u.scope = scope;
+		u.type = type;
+
+		iblock_ps_exec(q, cmd, 0, u.xparam);
+		return 0;
+	}
+
+	return -ENOSYS;
+}
+
 static u32 iblock_get_device_rev(struct se_device *dev)
 {
 	return SCSI_SPC_3; /* Return SPC-4 in Initiator Data */
@@ -1010,6 +1149,8 @@ static struct se_subsystem_api iblock_template = {
 	.alloc_task		= iblock_alloc_task,
 	.alloc_cmd_mem		= iblock_alloc_cmd_mem,
 	.free_cmd_mem		= iblock_free_cmd_mem,
+	.do_pr_offload		= iblock_do_pr_offload,
+	.do_persistent_reserve	= iblock_do_persistent_reserve,
 	.do_task		= iblock_do_task,
 	.do_discard		= iblock_do_discard,
 	 /* FIXME: make conditional on pure device? */

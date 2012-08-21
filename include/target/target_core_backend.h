@@ -27,6 +27,8 @@ struct se_subsystem_api {
 	struct se_task *(*alloc_task)(unsigned char *cdb);
 	int (*alloc_cmd_mem)(struct se_cmd *);
 	void (*free_cmd_mem)(struct se_cmd *);
+	int (*do_pr_offload)(struct se_task *);
+	int (*do_persistent_reserve)(struct se_task *task, u8 sa, u8 scope, u8 type);
 	int (*do_task)(struct se_task *);
 	int (*do_discard)(struct se_device *, sector_t, u32);
 	int (*do_write_same)(struct se_task *task, sector_t lba, u32 range);

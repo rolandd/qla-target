@@ -1,0 +1,18 @@
+--- drivers/target/target_core_iblock.h	2012-04-12 12:51:34.176477189 -0700
++++ drivers/target/target_core_iblock.h	2012-04-12 16:23:24.025776183 -0700
+@@ -8,8 +8,13 @@
+ 
+ struct iblock_req {
+ 	struct se_task ib_task;
+-	atomic_t ib_bio_cnt;
+-	atomic_t ib_bio_err_cnt;
++	union {
++		struct {
++			atomic_t ib_bio_cnt;
++			atomic_t ib_bio_err_cnt;
++		};
++		struct ps_ioreq *iop;
++	};
+ } ____cacheline_aligned;
+ 
+ #define IBDF_HAS_UDEV_PATH		0x01

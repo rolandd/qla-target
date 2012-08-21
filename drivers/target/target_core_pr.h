@@ -43,6 +43,7 @@
 #define PR_APTPL_MAX_IPORT_LEN			256
 #define PR_APTPL_MAX_TPORT_LEN			256
 
+extern bool target_core_offload_pr;
 extern struct kmem_cache *t10_pr_reg_cache;
 
 extern int core_pr_dump_initiator_port(struct t10_pr_registration *,

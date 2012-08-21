@@ -2224,7 +2224,16 @@ check_depth:
 
 	spin_unlock_irqrestore(&cmd->t_state_lock, flags);
 
-	if (cmd->execute_task)
+	if (cmd->se_cmd_flags & SCF_OFFLOAD_SCSI_RESERVATION) {
+		if (dev->transport->do_pr_offload) {
+			pr_debug("executing do_pr_offload\n");
+			error = dev->transport->do_pr_offload(task);
+			pr_debug("do_pr_offload returned %d\n", error);
+		} else {
+			pr_err("transport does not support SFC_OFFLOAD_SCSI_RESERVATION\n");
+			error = -EACCES;
+		}
+	} else if (cmd->execute_task)
 		error = cmd->execute_task(task);
 	else
 		error = dev->transport->do_task(task);
@@ -2649,7 +2658,8 @@ static int transport_generic_cmd_sequencer(
 		/*
 		 * This means the CDB is allowed for the SCSI Initiator port
 		 * when said port is *NOT* holding the legacy SPC-2 or
-		 * SPC-3 Persistent Reservation.
+		 * SPC-3 Persistent Reservation, or we've offloaded all
+		 * reservation requests
 		 */
 	}
 
@@ -2886,16 +2896,30 @@ static int transport_generic_cmd_sequencer(
 		cmd->se_cmd_flags |= SCF_SCSI_CONTROL_SG_IO_CDB;
 		break;
 	case PERSISTENT_RESERVE_IN:
-		if (su_dev->t10_pr.res_type == SPC3_PERSISTENT_RESERVATIONS)
+		if (su_dev->t10_pr.res_type == SPC3_PERSISTENT_RESERVATIONS ||
+		    su_dev->t10_pr.res_type == SPC3_OFFLOADED_RESERVATIONS)
 			cmd->execute_task = target_scsi3_emulate_pr_in;
 		size = (cdb[7] << 8) + cdb[8];
 		cmd->se_cmd_flags |= SCF_SCSI_CONTROL_SG_IO_CDB;
+		/*
+		 * If we set ps_opcode, then ps_bdrv won't zero the
+		 * buffer.  So only set it if we're passing through to foed.
+		 */
+		if (target_core_offload_pr)
+			cmd->ps_opcode = PS_IO_PR_IN;
 		break;
 	case PERSISTENT_RESERVE_OUT:
-		if (su_dev->t10_pr.res_type == SPC3_PERSISTENT_RESERVATIONS)
+		if (su_dev->t10_pr.res_type == SPC3_PERSISTENT_RESERVATIONS ||
+		    su_dev->t10_pr.res_type == SPC3_OFFLOADED_RESERVATIONS)
 			cmd->execute_task = target_scsi3_emulate_pr_out;
 		size = (cdb[7] << 8) + cdb[8];
 		cmd->se_cmd_flags |= SCF_SCSI_CONTROL_SG_IO_CDB;
+		/*
+		 * If we set ps_opcode, then ps_bdrv won't zero the
+		 * buffer.  So only set it if we're passing through to foed.
+		 */
+		if (target_core_offload_pr)
+			cmd->ps_opcode = PS_IO_PR_OUT;
 		break;
 	case GPCMD_MECHANISM_STATUS:
 	case GPCMD_READ_DVD_STRUCTURE:
@@ -3016,8 +3040,9 @@ static int transport_generic_cmd_sequencer(
 		size = (cdb[6] << 16) + (cdb[7] << 8) + cdb[8];
 		cmd->se_cmd_flags |= SCF_SCSI_CONTROL_SG_IO_CDB;
 		break;
-	case RESERVE:
 	case RESERVE_10:
+		goto out_unsupported_cdb;
+	case RESERVE:
 		/*
 		 * The SPC-2 RESERVE does not contain a size in the SCSI CDB.
 		 * Assume the passthrough or $FABRIC_MOD will tell us about it.
@@ -3037,9 +3062,13 @@ static int transport_generic_cmd_sequencer(
 		if (su_dev->t10_pr.res_type != SPC_PASSTHROUGH)
 			cmd->execute_task = target_scsi2_reservation_reserve;
 		cmd->se_cmd_flags |= SCF_SCSI_NON_DATA_CDB;
+
+		if (target_core_offload_pr)
+			cmd->ps_opcode = PS_IO_RESERVE;
 		break;
-	case RELEASE:
 	case RELEASE_10:
+		goto out_unsupported_cdb;
+	case RELEASE:
 		/*
 		 * The SPC-2 RELEASE does not contain a size in the SCSI CDB.
 		 * Assume the passthrough or $FABRIC_MOD will tell us about it.
@@ -3052,6 +3081,9 @@ static int transport_generic_cmd_sequencer(
 		if (su_dev->t10_pr.res_type != SPC_PASSTHROUGH)
 			cmd->execute_task = target_scsi2_reservation_release;
 		cmd->se_cmd_flags |= SCF_SCSI_NON_DATA_CDB;
+
+		if (target_core_offload_pr)
+			cmd->ps_opcode = PS_IO_RELEASE;
 		break;
 	case SYNCHRONIZE_CACHE:
 	case SYNCHRONIZE_CACHE_16:
@@ -3191,6 +3223,11 @@ static int transport_generic_cmd_sequencer(
 	    !cmd->ps_opcode)
 		pr_warn("TARGET_CORE[%s]: Data command SCSI opcode 0x%02x with no ps_opcode\n",
 			cmd->se_tfo->get_fabric_name(), cdb[0]);
+
+	if (cmd->se_cmd_flags & SCF_OFFLOAD_SCSI_RESERVATION &&
+	    cmd->ps_opcode)
+		pr_warn("TARGET_CORE[%s]: SCSI opcode 0x%02x has SCF_OFFLOAD_SCSI_RESERVATION set and ps_opcode=%d\n",
+			cmd->se_tfo->get_fabric_name(), cdb[0], cmd->ps_opcode);
 
 	/* reject any command that we don't have a handler for */
 	if (!(passthrough || cmd->execute_task ||
@@ -3941,7 +3978,8 @@ int transport_generic_new_cmd(struct se_cmd *cmd)
 	 * beforehand.
 	 */
 	if (!(cmd->se_cmd_flags & SCF_PASSTHROUGH_SG_TO_MEM_NOALLOC) &&
-	    (cmd->data_length || cmd->ps_opcode)) {
+	    (cmd->data_length || cmd->ps_opcode ||
+	     (cmd->se_cmd_flags & SCF_OFFLOAD_SCSI_RESERVATION))) {
 		ret = transport_generic_get_mem(cmd);
 		if (ret < 0)
 			goto out_fail;

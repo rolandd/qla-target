@@ -397,7 +397,8 @@ struct t10_wwn {
 typedef enum {
 	SPC_PASSTHROUGH,
 	SPC2_RESERVATIONS,
-	SPC3_PERSISTENT_RESERVATIONS
+	SPC3_PERSISTENT_RESERVATIONS,
+	SPC3_OFFLOADED_RESERVATIONS
 } t10_reservations_index_t;
 
 struct t10_pr_registration {
