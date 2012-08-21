@@ -523,6 +523,7 @@ struct se_tmr_req {
 	struct se_device	*tmr_dev;
 	struct se_lun		*tmr_lun;
 	struct list_head	tmr_list;
+	struct completion	*offload_completion;
 };
 
 struct se_cmd {

@@ -297,9 +297,11 @@ int core_tmr_lun_reset(
         struct list_head *preempt_and_abort_list,
         struct se_cmd *prout_cmd)
 {
+	DECLARE_COMPLETION_ONSTACK(reset_done);
+	bool wait_for_transport;
 	struct se_node_acl *tmr_nacl = NULL;
 	struct se_portal_group *tmr_tpg = NULL;
-	int tas;
+	int tas, rc;
         /*
 	 * TASK_ABORTED status bit, this is configurable via ConfigFS
 	 * struct se_device attributes.  spc4r17 section 7.4.6 Control mode page
@@ -330,6 +332,16 @@ int core_tmr_lun_reset(
 		(preempt_and_abort_list) ? "Preempt" : "TMR",
 		dev->transport->name, tas);
 
+	wait_for_transport = false;
+	if (target_core_offload_pr && dev->transport->do_lun_reset) {
+		rc = dev->transport->do_lun_reset(tmr, &reset_done);
+		if (rc) {
+			pr_err("LUN_RESET: transport rc %d\n", rc);
+		} else {
+			wait_for_transport = true;
+		}
+	}
+
 	core_tmr_drain_tmr_list(dev, tmr, preempt_and_abort_list);
 	core_tmr_drain_cmd_list(dev, prout_cmd, tmr_nacl, tas,
 				preempt_and_abort_list);
@@ -345,6 +357,9 @@ int core_tmr_lun_reset(
 		spin_unlock(&dev->dev_reservation_lock);
 		pr_debug("LUN_RESET: SCSI-2 Released reservation\n");
 	}
+
+	if (wait_for_transport)
+		wait_for_completion_interruptible(&reset_done);
 
 	spin_lock_irq(&dev->stats_lock);
 	dev->num_resets++;

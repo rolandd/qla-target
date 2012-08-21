@@ -33,6 +33,7 @@ struct se_subsystem_api {
 	int (*do_discard)(struct se_device *, sector_t, u32);
 	int (*do_write_same)(struct se_task *task, sector_t lba, u32 range);
 	int (*do_compare_and_write)(struct se_task *task, u32 range);
+	int (*do_lun_reset)(struct se_tmr_req *, struct completion *);
 	void (*do_sync_cache)(struct se_task *);
 	void (*free_task)(struct se_task *);
 	ssize_t (*check_configfs_dev_params)(struct se_hba *,

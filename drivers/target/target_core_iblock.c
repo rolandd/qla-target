@@ -1016,6 +1016,32 @@ static int iblock_do_persistent_reserve(struct se_task *task, u8 sa, u8 scope, u
 	return -ENOSYS;
 }
 
+static void iblock_ps_end_lun_reset(struct ps_ioreq *iop, void *tmr_ptr, int error)
+{
+	struct se_tmr_req * tmr = tmr_ptr;
+	struct se_cmd *cmd = tmr->task_cmd;
+
+	complete(tmr->offload_completion);
+	iblock_free_cmd_mem(cmd);
+}
+
+static int iblock_do_lun_reset(struct se_tmr_req * tmr, struct completion *completion)
+{
+	struct se_cmd *cmd = tmr->task_cmd;
+	struct iblock_dev *ib_dev = cmd->se_dev->dev_ptr;
+	struct request_queue *q = bdev_get_queue(ib_dev->ibd_bd);
+	struct ps_ioreq *iop;
+
+	iop = iblock_ps_alloc(q, cmd, cmd->data_length, PS_IO_LUN_RESET,
+			      iblock_ps_end_lun_reset, tmr);
+	if (IS_ERR(iop))
+		return PTR_ERR(iop);
+	cmd->ps_iop = iop;
+	tmr->offload_completion = completion;
+	iblock_ps_exec(q, cmd, 0, 0);
+	return 0;
+}
+
 static u32 iblock_get_device_rev(struct se_device *dev)
 {
 	return SCSI_SPC_3; /* Return SPC-4 in Initiator Data */
@@ -1156,6 +1182,7 @@ static struct se_subsystem_api iblock_template = {
 	 /* FIXME: make conditional on pure device? */
 	.do_write_same          = iblock_do_write_same,
 	.do_compare_and_write   = iblock_do_compare_and_write,
+	.do_lun_reset		= iblock_do_lun_reset,
 	.do_sync_cache		= iblock_emulate_sync_cache,
 	.free_task		= iblock_free_task,
 	.check_configfs_dev_params = iblock_check_configfs_dev_params,
