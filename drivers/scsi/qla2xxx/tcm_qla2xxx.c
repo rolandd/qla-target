@@ -505,6 +505,22 @@ u32 tcm_qla2xxx_sess_get_index(struct se_session *se_sess)
 	return 0;
 }
 
+static void tcm_qla2xxx_sess_get_i_t_nexus(struct se_cmd *se_cmd,
+				    const u8 **initiator, size_t *initiator_len,
+				    const u8 **target, size_t *target_len)
+{
+	struct se_session *se_sess = se_cmd->se_sess;
+	struct tcm_qla2xxx_tpg *tpg = container_of(
+		se_sess->se_tpg, struct tcm_qla2xxx_tpg, se_tpg);
+	struct qla_tgt_sess *sess = se_sess->fabric_sess_ptr;
+
+	*initiator = sess->port_name;
+	*initiator_len = sizeof(sess->port_name);
+
+	*target = (const u8 *)&tpg->lport->lport_wwpn;
+	*target_len = sizeof(tpg->lport->lport_wwpn);
+}
+
 /*
  * The LIO target core uses DMA_TO_DEVICE to mean that data is going
  * to the target (eg handling a WRITE) and DMA_FROM_DEVICE to mean
@@ -1798,6 +1814,7 @@ static struct target_core_fabric_ops tcm_qla2xxx_ops = {
 	.sess_logged_in			= tcm_qla2xxx_sess_logged_in,
 	.sess_get_index			= tcm_qla2xxx_sess_get_index,
 	.sess_get_initiator_sid		= NULL,
+	.sess_get_i_t_nexus		= tcm_qla2xxx_sess_get_i_t_nexus,
 	.write_pending			= tcm_qla2xxx_write_pending,
 	.write_pending_status		= tcm_qla2xxx_write_pending_status,
 	.set_default_node_attributes	= tcm_qla2xxx_set_default_node_attrs,

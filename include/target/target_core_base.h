@@ -75,6 +75,7 @@
 #define DF_READ_ONLY				0x00000001
 #define DF_SPC2_RESERVATIONS			0x00000002
 #define DF_SPC2_RESERVATIONS_WITH_ISID		0x00000004
+#define DF_USE_ALLOC_CMD_MEM			0x00000008
 
 /* struct se_dev_attrib sanity values */
 /* Default max_unmap_lba_count */
@@ -569,6 +570,10 @@ struct se_cmd {
 	struct list_head	se_queue_node;
 	struct list_head	se_cmd_list;
 	struct completion	cmd_wait_comp;
+
+	struct ps_ioreq		*ps_iop;
+	int			ps_opcode;
+
 	struct kref		cmd_kref;
 	struct target_core_fabric_ops *se_tfo;
 	int (*execute_task)(struct se_task *);

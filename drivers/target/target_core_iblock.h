@@ -8,8 +8,14 @@
 
 struct iblock_req {
 	struct se_task ib_task;
-	atomic_t pending;
-	atomic_t ib_bio_err_cnt;
+	union {
+		struct {
+			atomic_t pending;
+			atomic_t ib_bio_err_cnt;
+		};
+		struct ps_ioreq *iop;
+	};
+	u64 cmd_retval;
 } ____cacheline_aligned;
 
 #define IBDF_HAS_UDEV_PATH		0x01

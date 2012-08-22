@@ -25,6 +25,8 @@ struct se_subsystem_api {
 	void (*free_device)(void *);
 	int (*transport_complete)(struct se_task *task);
 	struct se_task *(*alloc_task)(unsigned char *cdb);
+	int (*alloc_cmd_mem)(struct se_cmd *);
+	void (*free_cmd_mem)(struct se_cmd *);
 	int (*do_task)(struct se_task *);
 	int (*do_discard)(struct se_device *, sector_t, u32);
 	void (*do_sync_cache)(struct se_task *);

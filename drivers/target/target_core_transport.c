@@ -352,6 +352,23 @@ void target_put_nacl(struct se_node_acl *nacl)
 	kref_put(&nacl->acl_kref, target_complete_nacl);
 }
 
+void target_session_i_t_nexus(struct se_cmd * cmd, const u8 **initiator,
+			      size_t *initiator_len, const u8 **target,
+			      size_t *target_len)
+{
+	struct target_core_fabric_ops *se_tpg_tfo =
+		cmd->se_sess->se_tpg->se_tpg_tfo;
+
+	if (se_tpg_tfo->sess_get_i_t_nexus) {
+		se_tpg_tfo->sess_get_i_t_nexus(cmd, initiator, initiator_len,
+					       target, target_len);
+	} else {
+		*initiator_len = 0;
+		*target_len = 0;
+	}
+}
+EXPORT_SYMBOL_GPL(target_session_i_t_nexus);
+
 void transport_deregister_session_configfs(struct se_session *se_sess)
 {
 	struct se_node_acl *se_nacl;
@@ -2651,6 +2668,7 @@ static int transport_generic_cmd_sequencer(
 		size = transport_get_size(sectors, cdb, cmd);
 		cmd->t_task_lba = transport_lba_21(cdb);
 		cmd->se_cmd_flags |= SCF_SCSI_DATA_SG_IO_CDB;
+		cmd->ps_opcode = PS_IO_READ;
 		break;
 	case READ_10:
 		sectors = transport_get_sectors_10(cdb, cmd, &sector_ret);
@@ -2659,6 +2677,7 @@ static int transport_generic_cmd_sequencer(
 		size = transport_get_size(sectors, cdb, cmd);
 		cmd->t_task_lba = transport_lba_32(cdb);
 		cmd->se_cmd_flags |= SCF_SCSI_DATA_SG_IO_CDB;
+		cmd->ps_opcode = PS_IO_READ;
 		break;
 	case READ_12:
 		sectors = transport_get_sectors_12(cdb, cmd, &sector_ret);
@@ -2667,6 +2686,7 @@ static int transport_generic_cmd_sequencer(
 		size = transport_get_size(sectors, cdb, cmd);
 		cmd->t_task_lba = transport_lba_32(cdb);
 		cmd->se_cmd_flags |= SCF_SCSI_DATA_SG_IO_CDB;
+		cmd->ps_opcode = PS_IO_READ;
 		break;
 	case READ_16:
 		sectors = transport_get_sectors_16(cdb, cmd, &sector_ret);
@@ -2675,6 +2695,7 @@ static int transport_generic_cmd_sequencer(
 		size = transport_get_size(sectors, cdb, cmd);
 		cmd->t_task_lba = transport_lba_64(cdb);
 		cmd->se_cmd_flags |= SCF_SCSI_DATA_SG_IO_CDB;
+		cmd->ps_opcode = PS_IO_READ;
 		break;
 	case WRITE_6:
 		sectors = transport_get_sectors_6(cdb, cmd, &sector_ret);
@@ -2683,6 +2704,7 @@ static int transport_generic_cmd_sequencer(
 		size = transport_get_size(sectors, cdb, cmd);
 		cmd->t_task_lba = transport_lba_21(cdb);
 		cmd->se_cmd_flags |= SCF_SCSI_DATA_SG_IO_CDB;
+		cmd->ps_opcode = PS_IO_WRITE;
 		break;
 	case WRITE_10:
 	case WRITE_VERIFY:
@@ -2697,6 +2719,7 @@ static int transport_generic_cmd_sequencer(
 		else if (cdb[1] & 0x8)
 			cmd->se_cmd_flags |= SCF_FUA;
 		cmd->se_cmd_flags |= SCF_SCSI_DATA_SG_IO_CDB;
+		cmd->ps_opcode = PS_IO_WRITE;
 		break;
 	case WRITE_12:
 		sectors = transport_get_sectors_12(cdb, cmd, &sector_ret);
@@ -2707,6 +2730,7 @@ static int transport_generic_cmd_sequencer(
 		if (cdb[1] & 0x8)
 			cmd->se_cmd_flags |= SCF_FUA;
 		cmd->se_cmd_flags |= SCF_SCSI_DATA_SG_IO_CDB;
+		cmd->ps_opcode = PS_IO_WRITE;
 		break;
 	case WRITE_16:
 		sectors = transport_get_sectors_16(cdb, cmd, &sector_ret);
@@ -2717,6 +2741,7 @@ static int transport_generic_cmd_sequencer(
 		if (cdb[1] & 0x8)
 			cmd->se_cmd_flags |= SCF_FUA;
 		cmd->se_cmd_flags |= SCF_SCSI_DATA_SG_IO_CDB;
+		cmd->ps_opcode = PS_IO_WRITE;
 		break;
 	case XDWRITEREAD_10:
 		if ((cmd->data_direction != DMA_TO_DEVICE) ||
@@ -2786,6 +2811,7 @@ static int transport_generic_cmd_sequencer(
 
 			cmd->t_task_lba = get_unaligned_be64(&cdb[12]);
 			cmd->se_cmd_flags |= SCF_SCSI_CONTROL_SG_IO_CDB;
+			cmd->ps_opcode = PS_IO_WRITE_SAME;
 
 			if (target_check_write_same_discard(&cdb[10], dev) < 0)
 				goto out_unsupported_cdb;
@@ -3146,6 +3172,11 @@ static int transport_generic_cmd_sequencer(
 		goto out_unsupported_cdb;
 	}
 
+	if (cmd->se_cmd_flags & SCF_SCSI_DATA_SG_IO_CDB &&
+	    !cmd->ps_opcode)
+		pr_warn("TARGET_CORE[%s]: Data command SCSI opcode 0x%02x with no ps_opcode\n",
+			cmd->se_tfo->get_fabric_name(), cdb[0]);
+
 	/* reject any command that we don't have a handler for */
 	if (!(passthrough || cmd->execute_task ||
 	     (cmd->se_cmd_flags & SCF_SCSI_DATA_SG_IO_CDB)))
@@ -3484,6 +3515,11 @@ static inline void transport_free_pages(struct se_cmd *cmd)
 	if (cmd->se_cmd_flags & SCF_PASSTHROUGH_SG_TO_MEM_NOALLOC)
 		return;
 
+	if (cmd->se_dev->dev_flags & DF_USE_ALLOC_CMD_MEM) {
+		cmd->se_dev->transport->free_cmd_mem(cmd);
+		return;
+	}
+
 	transport_free_sgl(cmd->t_data_sg, cmd->t_data_nents);
 	cmd->t_data_sg = NULL;
 	cmd->t_data_nents = 0;
@@ -3667,6 +3703,9 @@ transport_generic_get_mem(struct se_cmd *cmd)
 	gfp_t zero_flag;
 	int i = 0;
 
+	if (cmd->se_dev->dev_flags & DF_USE_ALLOC_CMD_MEM)
+		return cmd->se_dev->transport->alloc_cmd_mem(cmd);
+
 	nents = DIV_ROUND_UP(length, PAGE_SIZE);
 	cmd->t_data_sg = kmalloc(sizeof(struct scatterlist) * nents, GFP_KERNEL);
 	if (!cmd->t_data_sg)
@@ -3740,11 +3779,14 @@ transport_allocate_data_tasks(struct se_cmd *cmd,
 	sectors = DIV_ROUND_UP(cmd->data_length, sector_size);
 	task_count = DIV_ROUND_UP_SECTOR_T(sectors, dev_max_sectors);
 
-	/*
-	 * If we need just a single task reuse the SG list in the command
-	 * and avoid a lot of work.
-	 */
-	if (task_count == 1) {
+	if (task_count == 0) {
+		/* Nothing to do for 0-length commands */
+		return 0;
+	} else if (task_count == 1) {
+		/*
+		 * If we need just a single task reuse the SG list in the command
+		 * and avoid a lot of work.
+		 */
 		struct se_task *task;
 		unsigned long flags;
 
@@ -3764,6 +3806,13 @@ transport_allocate_data_tasks(struct se_cmd *cmd,
 		spin_unlock_irqrestore(&cmd->t_state_lock, flags);
 
 		return task_count;
+	} else {
+		/*
+		 * If we're doing memory allocation in ps_bdrv through
+		 * the backend then we better not get commands with
+		 * multiple tasks.
+		 */
+		BUG_ON(cmd->se_dev->dev_flags & DF_USE_ALLOC_CMD_MEM);
 	}
 
 	for (i = 0; i < task_count; i++) {
@@ -3862,7 +3911,7 @@ int transport_generic_new_cmd(struct se_cmd *cmd)
 	 * beforehand.
 	 */
 	if (!(cmd->se_cmd_flags & SCF_PASSTHROUGH_SG_TO_MEM_NOALLOC) &&
-	    cmd->data_length) {
+	    (cmd->data_length || cmd->ps_opcode)) {
 		ret = transport_generic_get_mem(cmd);
 		if (ret < 0)
 			goto out_fail;

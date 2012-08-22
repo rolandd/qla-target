@@ -67,6 +67,8 @@ struct target_core_fabric_ops {
 	 */
 	u32 (*sess_get_initiator_sid)(struct se_session *,
 				      unsigned char *, u32);
+	void (*sess_get_i_t_nexus)(struct se_cmd *, const u8 **, size_t *,
+				   const u8 **, size_t *);
 	int (*write_pending)(struct se_cmd *);
 	int (*write_pending_status)(struct se_cmd *);
 	void (*set_default_node_attributes)(struct se_node_acl *);
@@ -105,6 +107,8 @@ void	transport_register_session(struct se_portal_group *,
 		struct se_node_acl *, struct se_session *, void *);
 void	target_get_session(struct se_session *);
 int	target_put_session(struct se_session *);
+void	target_session_i_t_nexus(struct se_cmd *, const u8 **, size_t *,
+				 const u8 **, size_t *);
 void	transport_free_session(struct se_session *);
 void	target_put_nacl(struct se_node_acl *);
 void	transport_deregister_session_configfs(struct se_session *);

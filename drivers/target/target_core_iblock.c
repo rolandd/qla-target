@@ -40,11 +40,13 @@
 #include <linux/genhd.h>
 #include <linux/file.h>
 #include <linux/module.h>
+#include <asm/unaligned.h>
 #include <scsi/scsi.h>
 #include <scsi/scsi_host.h>
 
 #include <target/target_core_base.h>
 #include <target/target_core_backend.h>
+#include <target/target_core_fabric.h>
 
 #include "target_core_iblock.h"
 
@@ -169,6 +171,9 @@ static struct se_device *iblock_create_virtdevice(
 	if (blk_queue_nonrot(q))
 		dev->se_sub_dev->se_dev_attrib.is_nonrot = 1;
 
+	if (q->alloc_ps_buf_fn && q->exec_ps_buf_fn && q->free_ps_buf_fn)
+		dev->dev_flags |= DF_USE_ALLOC_CMD_MEM;
+
 	return dev;
 
 failed:
@@ -209,6 +214,66 @@ iblock_alloc_task(unsigned char *cdb)
 
 	atomic_set(&ib_req->pending, 1);
 	return &ib_req->ib_task;
+}
+
+static void iblock_ps_endio(struct ps_ioreq *iop, void *cmd_ptr, int error)
+{
+	struct se_cmd *cmd = cmd_ptr;
+	/* We assume we only have one task if we're using ps_ioreqs */
+	struct se_task *task = list_first_entry(&cmd->t_task_list, struct se_task, t_list);
+
+	/* We assume we only have one task if we're using ps_ioreqs */
+	transport_complete_task(task, !error);
+}
+
+static struct ps_ioreq * iblock_ps_alloc(struct request_queue *q,
+					 struct se_cmd *cmd, unsigned size,
+					 int opcode, ps_buf_end_io_fn endio,
+					 void *endio_priv)
+{
+	struct exec2_ps_nexus nexus;
+
+	target_session_i_t_nexus(cmd, &nexus.initiator,
+				 &nexus.initiator_len, &nexus.target,
+				 &nexus.target_len);
+	return q->alloc_ps_buf_fn(q, size, opcode, &cmd->t_data_sg,
+				  &cmd->t_data_nents, &nexus, endio,
+				  endio_priv);
+}
+
+static int iblock_alloc_cmd_mem(struct se_cmd *cmd)
+{
+	struct iblock_dev *ib_dev = cmd->se_dev->dev_ptr;
+	struct request_queue *q = bdev_get_queue(ib_dev->ibd_bd);
+	struct ps_ioreq *iop;
+	unsigned alloc_size;
+
+	alloc_size = cmd->data_length;
+	/*
+	 * Special case: for UNMAP commands, the data_length will be
+	 * the length of the descriptor.  We need to allocate enough
+	 * space for the descriptor and also for the sector buffer we
+	 * use for the write-same command we turn it into.
+	 */
+	if (cmd->ps_opcode == PS_IO_WRITE_SAME)
+		alloc_size = max(alloc_size, 1u << 9);
+
+	iop = iblock_ps_alloc(q, cmd, alloc_size, cmd->ps_opcode, iblock_ps_endio, cmd);
+	if (IS_ERR(iop))
+		return PTR_ERR(iop);
+	else
+		cmd->ps_iop = iop;
+
+	return 0;
+}
+
+static void iblock_free_cmd_mem(struct se_cmd *cmd)
+{
+	struct iblock_dev *ib_dev = cmd->se_dev->dev_ptr;
+	struct request_queue *q = bdev_get_queue(ib_dev->ibd_bd);
+
+	q->free_ps_buf_fn(cmd->ps_iop);
+	cmd->ps_iop = NULL;
 }
 
 static unsigned long long iblock_emulate_read_cap_with_block_size(
@@ -506,6 +571,16 @@ static void iblock_submit_bios(struct bio_list *list, int rw)
 	blk_finish_plug(&plug);
 }
 
+static void iblock_ps_exec(struct request_queue *q, struct se_cmd *cmd,
+			   sector_t sect, u64 xparam)
+{
+	cmd->scsi_status = 0;
+	cmd->scsi_sense_length = 0;
+	q->exec_ps_buf_fn(cmd->ps_iop, sect, xparam, cmd->recv_time,
+			  cmd->sense_buffer, &cmd->scsi_status,
+			  &cmd->scsi_sense_length);
+}
+
 static int iblock_do_task(struct se_task *task)
 {
 	struct se_cmd *cmd = task->task_se_cmd;
@@ -518,6 +593,14 @@ static int iblock_do_task(struct se_task *task)
 	sector_t block_lba;
 	unsigned bio_cnt;
 	int rw;
+
+	if (cmd->ps_iop) {
+		struct iblock_dev *ib_dev = dev->dev_ptr;
+		struct request_queue *q = bdev_get_queue(ib_dev->ibd_bd);
+
+		iblock_ps_exec(q, cmd, cmd->t_task_lba, 0);
+		return 0;
+	}
 
 	if (task->task_data_direction == DMA_TO_DEVICE) {
 		/*
@@ -667,6 +750,8 @@ static struct se_subsystem_api iblock_template = {
 	.create_virtdevice	= iblock_create_virtdevice,
 	.free_device		= iblock_free_device,
 	.alloc_task		= iblock_alloc_task,
+	.alloc_cmd_mem		= iblock_alloc_cmd_mem,
+	.free_cmd_mem		= iblock_free_cmd_mem,
 	.do_task		= iblock_do_task,
 	.do_discard		= iblock_do_discard,
 	.do_sync_cache		= iblock_emulate_sync_cache,

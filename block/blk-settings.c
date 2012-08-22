@@ -797,6 +797,19 @@ void blk_queue_flush_queueable(struct request_queue *q, bool queueable)
 }
 EXPORT_SYMBOL_GPL(blk_queue_flush_queueable);
 
+void blk_queue_ps_buf(struct request_queue *q,
+		      alloc2_ps_buf_fn *alloc_ps_buf_fn,
+		      exec2_ps_buf_fn *exec_ps_buf_fn,
+		      free_ps_buf_fn *free_ps_buf_fn,
+		      get_ps_volname_fn *get_ps_volname_fn)
+{
+	q->alloc_ps_buf_fn = alloc_ps_buf_fn;
+	q->exec_ps_buf_fn = exec_ps_buf_fn;
+	q->free_ps_buf_fn = free_ps_buf_fn;
+	q->get_ps_volname_fn = get_ps_volname_fn;
+}
+EXPORT_SYMBOL_GPL(blk_queue_ps_buf);
+
 static int __init blk_settings_init(void)
 {
 	blk_max_low_pfn = max_low_pfn - 1;

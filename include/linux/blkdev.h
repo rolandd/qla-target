@@ -218,6 +218,55 @@ enum blk_eh_timer_return {
 
 typedef enum blk_eh_timer_return (rq_timed_out_fn)(struct request *);
 
+/*
+ * These defines are duplicated in ps_bdrv.h (which is shared with our
+ * userspace) and need to stay in sync.  Any skew should be caught
+ * when we build the ps_bdrv kernel module, which includes both
+ * <linux/blkdev.h> and ps_bdrv.h.
+ */
+#define	PS_IO_WRITE		1	/* I/O request is a write */
+#define	PS_IO_READ		2	/* I/O request is a read */
+#define	PS_IO_WRITE_SAME	4	/* I/O request is a SCSI WRITE SAME */
+#define	PS_IO_COMPARE_AND_WRITE	5	/* I/O request is a SCSI COMPARE AND WRITE */
+#define	PS_IO_PR_OFFLOAD	7	/* I/O request is an offloaded PR check */
+#define	PS_IO_PR_IN		8	/* I/O request is a PERSISTENT RESERVE IN command */
+#define	PS_IO_PR_OUT		9	/* I/O request is a PERSISTENT RESERVE OUT command */
+#define	PS_IO_RELEASE		11	/* I/O request is a RELEASE(6) */
+#define	PS_IO_RESERVE		12	/* I/O request is a RESERVE(6) */
+#define	PS_IO_LUN_RESET		13	/* I/O request is a LUN_RESET */
+
+struct ps_ioreq;
+
+/*
+ * error < 0 means IO error.
+ */
+typedef void ps_buf_end_io_fn(struct ps_ioreq *iop, void *private, int error);
+
+/**
+ * struct exec2_ps_nexus - description of the source of a packet
+ * @initiator: Binary representation of initiator
+ * @initiator_len: Length of source wwn/iqn
+ * @target: Opaque identifier of target port
+ * @target_len: Length of target ID
+ */
+struct exec2_ps_nexus {
+	const u8 *initiator;
+	size_t initiator_len;
+	const u8 *target;
+	size_t target_len;
+};
+
+typedef struct ps_ioreq *(alloc2_ps_buf_fn)(struct request_queue *q, unsigned size,
+					    int opcode, struct scatterlist **sg,
+					    int *nents, struct exec2_ps_nexus *,
+					    ps_buf_end_io_fn endio, void *private);
+typedef void (exec2_ps_buf_fn)(struct ps_ioreq *iop, sector_t sect, u64 xparam,
+			       ktime_t recv_time, u8 *sense_buffer,
+			       u8 *scsi_status, u16 *sense_len);
+typedef void (free_ps_buf_fn)(struct ps_ioreq *iop);
+
+typedef const char * (get_ps_volname_fn)(struct request_queue *q);
+
 enum blk_queue_state {
 	Queue_down,
 	Queue_up,
@@ -383,6 +432,10 @@ struct request_queue
 	/* Throttle data */
 	struct throtl_data *td;
 #endif
+	alloc2_ps_buf_fn        *alloc_ps_buf_fn;
+	exec2_ps_buf_fn		*exec_ps_buf_fn;
+	free_ps_buf_fn		*free_ps_buf_fn;
+	get_ps_volname_fn       *get_ps_volname_fn;
 };
 
 #define QUEUE_FLAG_QUEUED	1	/* uses generic tag queueing */
@@ -850,6 +903,10 @@ extern void blk_queue_rq_timeout(struct request_queue *, unsigned int);
 extern void blk_queue_flush(struct request_queue *q, unsigned int flush);
 extern void blk_queue_flush_queueable(struct request_queue *q, bool queueable);
 extern struct backing_dev_info *blk_get_backing_dev_info(struct block_device *bdev);
+
+extern void blk_queue_ps_buf(struct request_queue *q, alloc2_ps_buf_fn *,
+			     exec2_ps_buf_fn *, free_ps_buf_fn *,
+			     get_ps_volname_fn *);
 
 extern int blk_rq_map_sg(struct request_queue *, struct request *, struct scatterlist *);
 extern void blk_dump_rq_flags(struct request *, char *);
