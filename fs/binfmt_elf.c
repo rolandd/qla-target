@@ -32,6 +32,7 @@
 #include <linux/elf.h>
 #include <linux/utsname.h>
 #include <linux/coredump.h>
+#include <linux/hung_task.h>
 #include <asm/uaccess.h>
 #include <asm/param.h>
 #include <asm/page.h>
@@ -1931,7 +1932,8 @@ static int elf_core_dump(struct coredump_params *cprm)
 
 	has_dumped = 1;
 	current->flags |= PF_DUMPCORE;
-  
+	signal_start_coredump();
+
 	fs = get_fs();
 	set_fs(KERNEL_DS);
 
@@ -2062,6 +2064,7 @@ cleanup:
 	kfree(phdr4note);
 	kfree(elf);
 out:
+	signal_end_coredump();
 	return has_dumped;
 }
 

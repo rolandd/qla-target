@@ -35,6 +35,7 @@
 #include <linux/elf-fdpic.h>
 #include <linux/elfcore.h>
 #include <linux/coredump.h>
+#include <linux/hung_task.h>
 
 #include <asm/uaccess.h>
 #include <asm/param.h>
@@ -1698,6 +1699,7 @@ static int elf_fdpic_core_dump(struct coredump_params *cprm)
 
 	has_dumped = 1;
 	current->flags |= PF_DUMPCORE;
+	signal_start_coredump();
 
 	/*
 	 * Set up the notes in similar form to SVR4 core dumps made
@@ -1867,6 +1869,7 @@ cleanup:
 #ifdef ELF_CORE_COPY_XFPREGS
 	kfree(xfpu);
 #endif
+	signal_end_coredump();
 	return has_dumped;
 #undef NUM_NOTES
 }

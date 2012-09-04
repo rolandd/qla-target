@@ -15,6 +15,7 @@
 #include <linux/lockdep.h>
 #include <linux/module.h>
 #include <linux/sysctl.h>
+#include <linux/hung_task.h>
 
 /*
  * The number of tasks checked:
@@ -47,6 +48,28 @@ static struct task_struct *watchdog_task;
  */
 unsigned int __read_mostly sysctl_hung_task_panic =
 				CONFIG_BOOTPARAM_HUNG_TASK_PANIC_VALUE;
+
+static atomic_t concurrent_core_dumps;
+static unsigned long core_dump_end_time;
+
+void signal_start_coredump(void)
+{
+	atomic_inc(&concurrent_core_dumps);
+}
+
+void signal_end_coredump(void)
+{
+	if (atomic_dec_and_test(&concurrent_core_dumps))
+		core_dump_end_time = jiffies;
+}
+
+/* Returns true if there was a core dump within sysctl_hung_task_timeout_secs */
+static int dump_in_progress(void)
+{
+	return atomic_read(&concurrent_core_dumps) ||
+		time_before(jiffies, core_dump_end_time +
+				sysctl_hung_task_timeout_secs * HZ);
+}
 
 static int __init hung_task_panic_setup(char *str)
 {
@@ -85,6 +108,9 @@ static void check_hung_task(struct task_struct *t, unsigned long timeout)
 		t->last_switch_count = switch_count;
 		return;
 	}
+	/* Core dumps can easily take longer than the timeout, so ignore them */
+	if (dump_in_progress())
+		return;
 	if (!sysctl_hung_task_warnings)
 		return;
 	sysctl_hung_task_warnings--;

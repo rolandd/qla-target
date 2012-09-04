@@ -25,6 +25,7 @@
 #include <linux/init.h>
 #include <linux/coredump.h>
 #include <linux/slab.h>
+#include <linux/hung_task.h>
 
 #include <asm/system.h>
 #include <asm/uaccess.h>
@@ -90,7 +91,8 @@ static int aout_core_dump(struct coredump_params *cprm)
 	set_fs(KERNEL_DS);
 	has_dumped = 1;
 	current->flags |= PF_DUMPCORE;
-       	strncpy(dump.u_comm, current->comm, sizeof(dump.u_comm));
+	signal_start_coredump();
+	strncpy(dump.u_comm, current->comm, sizeof(dump.u_comm));
 	dump.u_ar0 = offsetof(struct user, regs);
 	dump.signal = cprm->signr;
 	aout_dump_thread(cprm->regs, &dump);
@@ -136,6 +138,7 @@ static int aout_core_dump(struct coredump_params *cprm)
 	}
 end_coredump:
 	set_fs(fs);
+	signal_end_coredump();
 	return has_dumped;
 }
 
