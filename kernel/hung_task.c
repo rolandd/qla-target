@@ -128,8 +128,10 @@ static void check_hung_task(struct task_struct *t, unsigned long timeout)
 
 	touch_nmi_watchdog();
 
-	if (sysctl_hung_task_panic)
+	if (sysctl_hung_task_panic) {
+		show_state();
 		panic("hung_task: blocked tasks");
+	}
 }
 
 /*
