@@ -1103,6 +1103,9 @@ int ib_send_cm_req(struct ib_cm_id *cm_id,
 	unsigned long flags;
 	int ret;
 
+	dev_info(cm_id->device->dma_device, "[%p] %s qp_num=%d\n",
+		 cm_id, __func__, param->qp_num);
+
 	ret = cm_validate_req_param(param);
 	if (ret)
 		return ret;
@@ -1627,6 +1630,9 @@ int ib_send_cm_rep(struct ib_cm_id *cm_id,
 	unsigned long flags;
 	int ret;
 
+	dev_info(cm_id->device->dma_device, "[%p] %s qp_num=%d id %x/%x\n",
+		 cm_id, __func__, param->qp_num, cm_id->local_id, cm_id->remote_id);
+
 	if (param->private_data &&
 	    param->private_data_len > IB_CM_REP_PRIVATE_DATA_SIZE)
 		return -EINVAL;
@@ -1689,6 +1695,8 @@ int ib_send_cm_rtu(struct ib_cm_id *cm_id,
 	unsigned long flags;
 	void *data;
 	int ret;
+
+	dev_info(cm_id->device->dma_device, "[%p] %s\n", cm_id, __func__);
 
 	if (private_data && private_data_len > IB_CM_RTU_PRIVATE_DATA_SIZE)
 		return -EINVAL;
@@ -1762,6 +1770,9 @@ static void cm_dup_rep_handler(struct cm_work *work)
 	rep_msg = (struct cm_rep_msg *) work->mad_recv_wc->recv_buf.mad;
 	cm_id_priv = cm_acquire_id(rep_msg->remote_comm_id,
 				   rep_msg->local_comm_id);
+	pr_info("[%p] (state %d) found for duplicate REP (%x/%x) %s\n",
+		cm_id_priv, cm_id_priv ? cm_id_priv->id.state : -1,
+		rep_msg->remote_comm_id, rep_msg->local_comm_id,__func__);
 	if (!cm_id_priv)
 		return;
 
@@ -1978,6 +1989,8 @@ int ib_send_cm_dreq(struct ib_cm_id *cm_id,
 	unsigned long flags;
 	int ret;
 
+	dev_info(cm_id->device->dma_device, "[%p] %s\n", cm_id, __func__);
+
 	if (private_data && private_data_len > IB_CM_DREQ_PRIVATE_DATA_SIZE)
 		return -EINVAL;
 
@@ -2040,6 +2053,8 @@ int ib_send_cm_drep(struct ib_cm_id *cm_id,
 	unsigned long flags;
 	void *data;
 	int ret;
+
+	dev_info(cm_id->device->dma_device, "[%p] %s\n", cm_id, __func__);
 
 	if (private_data && private_data_len > IB_CM_DREP_PRIVATE_DATA_SIZE)
 		return -EINVAL;
@@ -2228,6 +2243,8 @@ int ib_send_cm_rej(struct ib_cm_id *cm_id,
 	unsigned long flags;
 	int ret;
 
+	dev_info(cm_id->device->dma_device, "[%p] %s\n", cm_id, __func__);
+
 	if ((private_data && private_data_len > IB_CM_REJ_PRIVATE_DATA_SIZE) ||
 	    (ari && ari_length > IB_CM_REJ_ARI_LENGTH))
 		return -EINVAL;
@@ -2403,6 +2420,8 @@ int ib_send_cm_mra(struct ib_cm_id *cm_id,
 	void *data;
 	unsigned long flags;
 	int ret;
+
+	dev_info(cm_id->device->dma_device, "[%p] %s (service_timeout %u)\n", cm_id, __func__, service_timeout);
 
 	if (private_data && private_data_len > IB_CM_MRA_PRIVATE_DATA_SIZE)
 		return -EINVAL;
@@ -2596,6 +2615,8 @@ int ib_send_cm_lap(struct ib_cm_id *cm_id,
 	unsigned long flags;
 	int ret;
 
+	dev_info(cm_id->device->dma_device, "[%p] %s\n", cm_id, __func__);
+
 	if (private_data && private_data_len > IB_CM_LAP_PRIVATE_DATA_SIZE)
 		return -EINVAL;
 
@@ -2771,6 +2792,8 @@ int ib_send_cm_apr(struct ib_cm_id *cm_id,
 	unsigned long flags;
 	int ret;
 
+	dev_info(cm_id->device->dma_device, "[%p] %s\n", cm_id, __func__);
+
 	if ((private_data && private_data_len > IB_CM_APR_PRIVATE_DATA_SIZE) ||
 	    (info && info_length > IB_CM_APR_INFO_LENGTH))
 		return -EINVAL;
@@ -2906,6 +2929,8 @@ int ib_send_cm_sidr_req(struct ib_cm_id *cm_id,
 	struct ib_mad_send_buf *msg;
 	unsigned long flags;
 	int ret;
+
+	dev_info(cm_id->device->dma_device, "[%p] %s\n", cm_id, __func__);
 
 	if (!param->path || (param->private_data &&
 	     param->private_data_len > IB_CM_SIDR_REQ_PRIVATE_DATA_SIZE))
@@ -3050,6 +3075,8 @@ int ib_send_cm_sidr_rep(struct ib_cm_id *cm_id,
 	struct ib_mad_send_buf *msg;
 	unsigned long flags;
 	int ret;
+
+	dev_info(cm_id->device->dma_device, "[%p] %s\n", cm_id, __func__);
 
 	if ((param->info && param->info_length > IB_CM_SIDR_REP_INFO_LENGTH) ||
 	    (param->private_data &&

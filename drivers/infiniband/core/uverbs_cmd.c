@@ -1421,6 +1421,9 @@ ssize_t ib_uverbs_modify_qp(struct ib_uverbs_file *file,
 		goto out;
 	}
 
+	dev_info(qp->device->dma_device, "%s ib_qp %p old_state=%d new_state=%d",
+		 __func__, qp, cmd.cur_qp_state, cmd.qp_state);
+
 	attr->qp_state 		  = cmd.qp_state;
 	attr->cur_qp_state 	  = cmd.cur_qp_state;
 	attr->path_mtu 		  = cmd.path_mtu;
