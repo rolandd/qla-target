@@ -3376,32 +3376,16 @@ static void iscsit_tx_thread_wait_for_tcp(struct iscsi_conn *conn)
 
 void iscsit_thread_get_cpumask(struct iscsi_conn *conn)
 {
-	struct iscsi_thread_set *ts = conn->thread_set;
-	int ord, cpu;
 	/*
-	 * thread_id is assigned from iscsit_global->ts_bitmap from
-	 * within iscsi_thread_set.c:iscsi_allocate_thread_sets()
-	 *
-	 * Here we use thread_id to determine which CPU that this
-	 * iSCSI connection's iscsi_thread_set will be scheduled to
-	 * execute upon.
+	 * Let iscsi worker threads run on CPUs 3,5,9,11, which are
+	 * the CPUs where we put the ethernet interrupts.  The hope
+	 * is that the kernel will run the thread on the CPU where
+	 * the network data is coming in.
 	 */
-	ord = ts->thread_id % cpumask_weight(cpu_online_mask);
-#if 0
-	pr_debug(">>>>>>>>>>>>>>>>>>>> Generated ord: %d from"
-			" thread_id: %d\n", ord, ts->thread_id);
-#endif
-	for_each_online_cpu(cpu) {
-		if (ord-- == 0) {
-			cpumask_set_cpu(cpu, conn->conn_cpumask);
-			return;
-		}
-	}
-	/*
-	 * This should never be reached..
-	 */
-	dump_stack();
-	cpumask_setall(conn->conn_cpumask);
+	static uint8_t cpus[] = {3, 5, 9, 11};
+	uint8_t cpu = cpus[conn->thread_set->thread_id & 0x3];
+
+	cpumask_set_cpu(cpu, conn->conn_cpumask);
 }
 
 static inline void iscsit_thread_check_cpumask(

@@ -114,16 +114,16 @@ extern int iscsi_allocate_thread_sets(u32 thread_pair_count)
 		init_completion(&ts->tx_start_comp);
 
 		ts->create_threads = 1;
-		ts->tx_thread = kthread_run(iscsi_target_tx_thread, ts, "%s",
-					ISCSI_TX_THREAD_NAME);
+		ts->tx_thread = kthread_run(iscsi_target_tx_thread, ts, "%s-%d",
+					ISCSI_TX_THREAD_NAME, thread_id);
 		if (IS_ERR(ts->tx_thread)) {
 			dump_stack();
 			pr_err("Unable to start iscsi_target_tx_thread\n");
 			break;
 		}
 
-		ts->rx_thread = kthread_run(iscsi_target_rx_thread, ts, "%s",
-					ISCSI_RX_THREAD_NAME);
+		ts->rx_thread = kthread_run(iscsi_target_rx_thread, ts, "%s-%d",
+					ISCSI_RX_THREAD_NAME, thread_id);
 		if (IS_ERR(ts->rx_thread)) {
 			kthread_stop(ts->tx_thread);
 			pr_err("Unable to start iscsi_target_rx_thread\n");
