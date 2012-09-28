@@ -662,13 +662,13 @@ void iscsit_add_cmd_to_immediate_queue(
 	wake_up_process(conn->thread_set->tx_thread);
 }
 
-struct iscsi_queue_req *iscsit_get_cmd_from_immediate_queue(struct iscsi_conn *conn)
+struct iscsi_queue_req *iscsit_get_cmd_from_immediate_queue_bh(struct iscsi_conn *conn)
 {
 	struct iscsi_queue_req *qr;
 
-	spin_lock_bh(&conn->immed_queue_lock);
+	spin_lock(&conn->immed_queue_lock);
 	if (list_empty(&conn->immed_queue_list)) {
-		spin_unlock_bh(&conn->immed_queue_lock);
+		spin_unlock(&conn->immed_queue_lock);
 		return NULL;
 	}
 	list_for_each_entry(qr, &conn->immed_queue_list, qr_list)
@@ -677,7 +677,7 @@ struct iscsi_queue_req *iscsit_get_cmd_from_immediate_queue(struct iscsi_conn *c
 	list_del(&qr->qr_list);
 	if (qr->cmd)
 		atomic_dec(&qr->cmd->immed_queue_count);
-	spin_unlock_bh(&conn->immed_queue_lock);
+	spin_unlock(&conn->immed_queue_lock);
 
 	return qr;
 }
@@ -736,13 +736,13 @@ void iscsit_add_cmd_to_response_queue(
 	wake_up_process(conn->thread_set->tx_thread);
 }
 
-struct iscsi_queue_req *iscsit_get_cmd_from_response_queue(struct iscsi_conn *conn)
+struct iscsi_queue_req *iscsit_get_cmd_from_response_queue_bh(struct iscsi_conn *conn)
 {
 	struct iscsi_queue_req *qr;
 
-	spin_lock_bh(&conn->response_queue_lock);
+	spin_lock(&conn->response_queue_lock);
 	if (list_empty(&conn->response_queue_list)) {
-		spin_unlock_bh(&conn->response_queue_lock);
+		spin_unlock(&conn->response_queue_lock);
 		return NULL;
 	}
 
@@ -752,7 +752,7 @@ struct iscsi_queue_req *iscsit_get_cmd_from_response_queue(struct iscsi_conn *co
 	list_del(&qr->qr_list);
 	if (qr->cmd)
 		atomic_dec(&qr->cmd->response_queue_count);
-	spin_unlock_bh(&conn->response_queue_lock);
+	spin_unlock(&conn->response_queue_lock);
 
 	return qr;
 }

@@ -3469,22 +3469,25 @@ restart:
 		     signal_pending(current))
 			goto transport_err;
 
+		local_bh_disable();
 get_immediate:
-		qr = iscsit_get_cmd_from_immediate_queue(conn);
+		qr = iscsit_get_cmd_from_immediate_queue_bh(conn);
 		if (qr) {
 			atomic_set(&conn->check_immediate_queue, 0);
 			cmd = qr->cmd;
 			state = qr->state;
 			kmem_cache_free(lio_qr_cache, qr);
 
-			spin_lock_bh(&cmd->istate_lock);
+			spin_lock(&cmd->istate_lock);
 			switch (state) {
 			case ISTATE_SEND_R2T:
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
+				local_bh_enable();
 				ret = iscsit_send_r2t(cmd, conn);
 				break;
 			case ISTATE_REMOVE:
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
+				local_bh_enable();
 
 				if (cmd->data_direction == DMA_TO_DEVICE)
 					iscsit_stop_dataout_timer(cmd);
@@ -3494,15 +3497,18 @@ get_immediate:
 				spin_unlock_bh(&conn->cmd_lock);
 
 				iscsit_free_cmd(cmd);
+				local_bh_disable();
 				goto get_immediate;
 			case ISTATE_SEND_NOPIN_WANT_RESPONSE:
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
+				local_bh_enable();
 				iscsit_mod_nopin_response_timer(conn);
 				ret = iscsit_send_unsolicited_nopin(cmd,
 						conn, 1);
 				break;
 			case ISTATE_SEND_NOPIN_NO_RESPONSE:
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
+				local_bh_enable();
 				ret = iscsit_send_unsolicited_nopin(cmd,
 						conn, 0);
 				break;
@@ -3511,7 +3517,8 @@ get_immediate:
 				" 0x%08x, i_state: %d on CID: %hu\n",
 				cmd->iscsi_opcode, cmd->init_task_tag, state,
 				conn->cid);
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
+				local_bh_enable();
 				goto transport_err;
 			}
 			if (ret < 0) {
@@ -3525,79 +3532,89 @@ get_immediate:
 				goto transport_err;
 			}
 
-			spin_lock_bh(&cmd->istate_lock);
+			local_bh_disable();
+			spin_lock(&cmd->istate_lock);
 			switch (state) {
 			case ISTATE_SEND_R2T:
-				spin_unlock_bh(&cmd->istate_lock);
-				spin_lock_bh(&cmd->dataout_timeout_lock);
+				spin_unlock(&cmd->istate_lock);
+				spin_lock(&cmd->dataout_timeout_lock);
 				iscsit_start_dataout_timer(cmd, conn);
-				spin_unlock_bh(&cmd->dataout_timeout_lock);
+				spin_unlock(&cmd->dataout_timeout_lock);
 				break;
 			case ISTATE_SEND_NOPIN_WANT_RESPONSE:
 				cmd->i_state = ISTATE_SENT_NOPIN_WANT_RESPONSE;
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
 				break;
 			case ISTATE_SEND_NOPIN_NO_RESPONSE:
 				cmd->i_state = ISTATE_SENT_STATUS;
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
 				break;
 			default:
 				pr_err("Unknown Opcode: 0x%02x ITT:"
 					" 0x%08x, i_state: %d on CID: %hu\n",
 					cmd->iscsi_opcode, cmd->init_task_tag,
 					state, conn->cid);
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
+				local_bh_enable();
 				goto transport_err;
 			}
 			goto get_immediate;
 		} else
 			conn->tx_immediate_queue = 0;
 
+		/* bottom halves are still disabled */
 get_response:
-		qr = iscsit_get_cmd_from_response_queue(conn);
+		qr = iscsit_get_cmd_from_response_queue_bh(conn);
 		if (qr) {
 			cmd = qr->cmd;
 			state = qr->state;
 			kmem_cache_free(lio_qr_cache, qr);
 
-			spin_lock_bh(&cmd->istate_lock);
+			spin_lock(&cmd->istate_lock);
 check_rsp_state:
 			switch (state) {
 			case ISTATE_SEND_DATAIN:
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
+				local_bh_enable();
 				ret = iscsit_send_data_in(cmd, conn,
 							  &eodr);
 				map_sg = 1;
 				break;
 			case ISTATE_SEND_STATUS:
 			case ISTATE_SEND_STATUS_RECOVERY:
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
+				local_bh_enable();
 				use_misc = 1;
 				ret = iscsit_send_status(cmd, conn);
 				break;
 			case ISTATE_SEND_LOGOUTRSP:
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
+				local_bh_enable();
 				use_misc = 1;
 				ret = iscsit_send_logout_response(cmd, conn);
 				break;
 			case ISTATE_SEND_ASYNCMSG:
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
+				local_bh_enable();
 				use_misc = 1;
 				ret = iscsit_send_conn_drop_async_message(
 						cmd, conn);
 				break;
 			case ISTATE_SEND_NOPIN:
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
+				local_bh_enable();
 				use_misc = 1;
 				ret = iscsit_send_nopin_response(cmd, conn);
 				break;
 			case ISTATE_SEND_REJECT:
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
+				local_bh_enable();
 				use_misc = 1;
 				ret = iscsit_send_reject(cmd, conn);
 				break;
 			case ISTATE_SEND_TASKMGTRSP:
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
+				local_bh_enable();
 				use_misc = 1;
 				ret = iscsit_send_task_mgt_rsp(cmd, conn);
 				if (ret != 0)
@@ -3607,7 +3624,8 @@ check_rsp_state:
 					iscsit_fall_back_to_erl0(conn->sess);
 				break;
 			case ISTATE_SEND_TEXTRSP:
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
+				local_bh_enable();
 				use_misc = 1;
 				ret = iscsit_send_text_rsp(cmd, conn);
 				break;
@@ -3616,7 +3634,8 @@ check_rsp_state:
 					" 0x%08x, i_state: %d on CID: %hu\n",
 					cmd->iscsi_opcode, cmd->init_task_tag,
 					state, conn->cid);
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
+				local_bh_enable();
 				goto transport_err;
 			}
 			if (ret < 0) {
@@ -3642,7 +3661,8 @@ check_rsp_state:
 			map_sg = 0;
 			iscsit_unmap_iovec(cmd);
 
-			spin_lock_bh(&cmd->istate_lock);
+			local_bh_disable();
+			spin_lock(&cmd->istate_lock);
 			switch (state) {
 			case ISTATE_SEND_DATAIN:
 				if (!eodr)
@@ -3675,7 +3695,8 @@ check_rsp_state:
 				use_misc = 0;
 				if (cmd->cmd_flags & ICF_REJECT_FAIL_CONN) {
 					cmd->cmd_flags &= ~ICF_REJECT_FAIL_CONN;
-					spin_unlock_bh(&cmd->istate_lock);
+					spin_unlock(&cmd->istate_lock);
+					local_bh_enable();
 					complete(&cmd->reject_comp);
 					goto transport_err;
 				}
@@ -3686,10 +3707,12 @@ check_rsp_state:
 				sent_status = 1;
 				break;
 			case ISTATE_SEND_LOGOUTRSP:
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
+				local_bh_enable();
 				if (!iscsit_logout_post_handler(cmd, conn))
 					goto restart;
-				spin_lock_bh(&cmd->istate_lock);
+				local_bh_disable();
+				spin_lock(&cmd->istate_lock);
 				use_misc = 0;
 				sent_status = 1;
 				break;
@@ -3698,7 +3721,8 @@ check_rsp_state:
 					" 0x%08x, i_state: %d on CID: %hu\n",
 					cmd->iscsi_opcode, cmd->init_task_tag,
 					cmd->i_state, conn->cid);
-				spin_unlock_bh(&cmd->istate_lock);
+				spin_unlock(&cmd->istate_lock);
+				local_bh_enable();
 				goto transport_err;
 			}
 
@@ -3706,7 +3730,7 @@ check_rsp_state:
 				cmd->i_state = ISTATE_SENT_STATUS;
 				sent_status = 0;
 			}
-			spin_unlock_bh(&cmd->istate_lock);
+			spin_unlock(&cmd->istate_lock);
 
 			if (atomic_read(&conn->check_immediate_queue))
 				goto get_immediate;
@@ -3714,6 +3738,8 @@ check_rsp_state:
 			goto get_response;
 		} else
 			conn->tx_response_queue = 0;
+
+		local_bh_enable();
 	}
 
 transport_err:

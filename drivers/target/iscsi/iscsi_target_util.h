@@ -24,9 +24,9 @@ extern struct iscsi_cmd *iscsit_find_cmd_from_ttt(struct iscsi_conn *, u32);
 extern int iscsit_find_cmd_for_recovery(struct iscsi_session *, struct iscsi_cmd **,
 			struct iscsi_conn_recovery **, u32);
 extern void iscsit_add_cmd_to_immediate_queue(struct iscsi_cmd *, struct iscsi_conn *, u8);
-extern struct iscsi_queue_req *iscsit_get_cmd_from_immediate_queue(struct iscsi_conn *);
+extern struct iscsi_queue_req *iscsit_get_cmd_from_immediate_queue_bh(struct iscsi_conn *);
 extern void iscsit_add_cmd_to_response_queue(struct iscsi_cmd *, struct iscsi_conn *, u8);
-extern struct iscsi_queue_req *iscsit_get_cmd_from_response_queue(struct iscsi_conn *);
+extern struct iscsi_queue_req *iscsit_get_cmd_from_response_queue_bh(struct iscsi_conn *);
 extern void iscsit_remove_cmd_from_tx_queues(struct iscsi_cmd *, struct iscsi_conn *);
 extern void iscsit_free_queue_reqs_for_conn(struct iscsi_conn *);
 extern void iscsit_release_cmd(struct iscsi_cmd *);
