@@ -57,7 +57,7 @@ static char config[MAX_PARAM_LENGTH];
 module_param_string(netconsole, config, MAX_PARAM_LENGTH, 0);
 MODULE_PARM_DESC(netconsole, " netconsole=[src-port]@[src-ip]/[dev],[tgt-port]@<tgt-ip>/[tgt-macaddr]");
 
-static bool wait_for_devices = true;
+static bool wait_for_devices = false;
 module_param(wait_for_devices, bool, 0644);
 MODULE_PARM_DESC(wait_for_devices, "netconsole support for devices registering after module load");
 
@@ -167,6 +167,14 @@ static void netconsole_target_put(struct netconsole_target *nt)
 
 #endif	/* CONFIG_NETCONSOLE_DYNAMIC */
 
+static bool __target_mac_match(struct netconsole_target * nt, struct net_device *nd)
+{
+	static const u8 bcast[ETH_ALEN] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+
+	return !memcmp(nt->np.local_mac, nd->dev_addr, ETH_ALEN) ||
+		!memcmp(nt->np.local_mac, bcast, ETH_ALEN);
+}
+
 /* rtnl_lock() held on entry */
 static int __enable_target(struct netconsole_target * nt, struct net_device *nd)
 {
@@ -214,6 +222,7 @@ static struct netconsole_target *alloc_param_target(char *target_config)
 	strlcpy(nt->np.dev_name, "eth0", IFNAMSIZ);
 	nt->np.local_port = 6665;
 	nt->np.remote_port = 6666;
+	memset(nt->np.local_mac, 0xff, ETH_ALEN);
 	memset(nt->np.remote_mac, 0xff, ETH_ALEN);
 
 	/* Parse parameters and setup netpoll */
@@ -337,10 +346,7 @@ static ssize_t show_remote_ip(struct netconsole_target *nt, char *buf)
 
 static ssize_t show_local_mac(struct netconsole_target *nt, char *buf)
 {
-	struct net_device *dev = nt->np.dev;
-	static const u8 bcast[ETH_ALEN] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
-
-	return snprintf(buf, PAGE_SIZE, "%pM\n", dev ? dev->dev_addr : bcast);
+	return snprintf(buf, PAGE_SIZE, "%pM\n", nt->np.local_mac);
 }
 
 static ssize_t show_remote_mac(struct netconsole_target *nt, char *buf)
@@ -639,6 +645,7 @@ static struct config_item *make_netconsole_target(struct config_group *group,
 	strlcpy(nt->np.dev_name, "eth0", IFNAMSIZ);
 	nt->np.local_port = 6665;
 	nt->np.remote_port = 6666;
+	memset(nt->np.local_mac, 0xff, ETH_ALEN);
 	memset(nt->np.remote_mac, 0xff, ETH_ALEN);
 
 	/* Initialize the config_item member */
@@ -710,13 +717,13 @@ restart:
 		netconsole_target_get(nt);
 
 		if (nt->pending && !strcmp(dev->name, nt->np.dev_name) &&
-		    event == NETDEV_REGISTER) {
+		    __target_mac_match(nt, dev) &&
+		    (event == NETDEV_REGISTER || event == NETDEV_CHANGENAME)) {
 			nt->pending = false;
 			spin_unlock_irqrestore(&target_list_lock, flags);
 			__enable_target(nt, dev);
 			netconsole_target_put(nt);
 			return NOTIFY_DONE;
-
 		} else if (nt->np.dev == dev) {
 			switch (event) {
 			case NETDEV_CHANGENAME:
@@ -866,7 +873,7 @@ restart:
 		if (nt->pending) {
 			struct net_device * nd = __dev_get_by_name(
 				&init_net, nt->np.dev_name);
-			if (nd) {
+			if (nd && __target_mac_match(nt, nd)) {
 				nt->pending = false;
 				spin_unlock_irqrestore(&target_list_lock,
 						       flags);
@@ -878,8 +885,6 @@ restart:
 			} else if (wait_for_devices) {
 				printk(KERN_INFO "netconsole: waiting for %s "
 				       "to arrive\n", nt->np.dev_name);
-			} else {
-				nt->pending = false;
 			}
 		}
 	}

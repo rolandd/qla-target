@@ -632,18 +632,59 @@ void netpoll_print_options(struct netpoll *np)
 			 np->name, &np->local_ip);
 	printk(KERN_INFO "%s: interface '%s'\n",
 			 np->name, np->dev_name);
+	printk(KERN_INFO "%s: local ethernet address %pM\n",
+			 np->name, np->local_mac);
 	printk(KERN_INFO "%s: remote port %d\n",
 			 np->name, np->remote_port);
 	printk(KERN_INFO "%s: remote IP %pI4\n",
 			 np->name, &np->remote_ip);
 	printk(KERN_INFO "%s: remote ethernet address %pM\n",
-	                 np->name, np->remote_mac);
+			 np->name, np->remote_mac);
 }
 EXPORT_SYMBOL(netpoll_print_options);
 
-int netpoll_parse_options(struct netpoll *np, char *opt)
+static int netpoll_parse_mac(struct netpoll *np, u8 mac[ETH_ALEN], char *opt)
 {
 	char *cur=opt, *delim;
+
+	/* MAC address */
+	if ((delim = strchr(cur, ':')) == NULL)
+		goto parse_failed;
+	*delim = 0;
+	mac[0] = simple_strtol(cur, NULL, 16);
+	cur = delim + 1;
+	if ((delim = strchr(cur, ':')) == NULL)
+		goto parse_failed;
+	*delim = 0;
+	mac[1] = simple_strtol(cur, NULL, 16);
+	cur = delim + 1;
+	if ((delim = strchr(cur, ':')) == NULL)
+		goto parse_failed;
+	*delim = 0;
+	mac[2] = simple_strtol(cur, NULL, 16);
+	cur = delim + 1;
+	if ((delim = strchr(cur, ':')) == NULL)
+		goto parse_failed;
+	*delim = 0;
+	mac[3] = simple_strtol(cur, NULL, 16);
+	cur = delim + 1;
+	if ((delim = strchr(cur, ':')) == NULL)
+		goto parse_failed;
+	*delim = 0;
+	mac[4] = simple_strtol(cur, NULL, 16);
+	cur = delim + 1;
+	mac[5] = simple_strtol(cur, NULL, 16);
+	return 0;
+
+ parse_failed:
+	printk(KERN_INFO "%s: couldn't parse config at '%s'!\n",
+	       np->name, cur);
+	return -1;
+}
+
+int netpoll_parse_options(struct netpoll *np, char *opt)
+{
+	char *cur=opt, *delim, *mac_delim;
 
 	if (*cur != '@') {
 		if ((delim = strchr(cur, '@')) == NULL)
@@ -667,6 +708,12 @@ int netpoll_parse_options(struct netpoll *np, char *opt)
 		/* parse out dev name */
 		if ((delim = strchr(cur, ',')) == NULL)
 			goto parse_failed;
+		if ((mac_delim = strchr(cur, '=')) && mac_delim < delim) {
+			*mac_delim = 0;
+			if (netpoll_parse_mac(np, np->local_mac, cur))
+				return -1;
+			cur = mac_delim + 1;
+		}
 		*delim = 0;
 		strlcpy(np->dev_name, cur, sizeof(np->dev_name));
 		cur = delim;
@@ -694,33 +741,8 @@ int netpoll_parse_options(struct netpoll *np, char *opt)
 	cur = delim + 1;
 
 	if (*cur != 0) {
-		/* MAC address */
-		if ((delim = strchr(cur, ':')) == NULL)
-			goto parse_failed;
-		*delim = 0;
-		np->remote_mac[0] = simple_strtol(cur, NULL, 16);
-		cur = delim + 1;
-		if ((delim = strchr(cur, ':')) == NULL)
-			goto parse_failed;
-		*delim = 0;
-		np->remote_mac[1] = simple_strtol(cur, NULL, 16);
-		cur = delim + 1;
-		if ((delim = strchr(cur, ':')) == NULL)
-			goto parse_failed;
-		*delim = 0;
-		np->remote_mac[2] = simple_strtol(cur, NULL, 16);
-		cur = delim + 1;
-		if ((delim = strchr(cur, ':')) == NULL)
-			goto parse_failed;
-		*delim = 0;
-		np->remote_mac[3] = simple_strtol(cur, NULL, 16);
-		cur = delim + 1;
-		if ((delim = strchr(cur, ':')) == NULL)
-			goto parse_failed;
-		*delim = 0;
-		np->remote_mac[4] = simple_strtol(cur, NULL, 16);
-		cur = delim + 1;
-		np->remote_mac[5] = simple_strtol(cur, NULL, 16);
+		if (netpoll_parse_mac(np, np->remote_mac, cur))
+			return -1;
 	}
 
 	netpoll_print_options(np);
