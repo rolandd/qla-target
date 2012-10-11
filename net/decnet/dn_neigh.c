@@ -243,7 +243,7 @@ static int dn_long_output(struct sk_buff *skb)
 			kfree_skb(skb);
 			return -ENOBUFS;
 		}
-		kfree_skb(skb);
+		consume_skb(skb);
 		skb = skb2;
 		if (net_ratelimit())
 			printk(KERN_INFO "dn_long_output: Increasing headroom\n");
@@ -290,7 +290,7 @@ static int dn_short_output(struct sk_buff *skb)
 			kfree_skb(skb);
 			return -ENOBUFS;
 		}
-		kfree_skb(skb);
+		consume_skb(skb);
 		skb = skb2;
 		if (net_ratelimit())
 			printk(KERN_INFO "dn_short_output: Increasing headroom\n");
@@ -333,7 +333,7 @@ static int dn_phase3_output(struct sk_buff *skb)
 			kfree_skb(skb);
 			return -ENOBUFS;
 		}
-		kfree_skb(skb);
+		consume_skb(skb);
 		skb = skb2;
 		if (net_ratelimit())
 			printk(KERN_INFO "dn_phase3_output: Increasing headroom\n");

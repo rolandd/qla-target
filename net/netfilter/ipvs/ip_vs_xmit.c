@@ -802,7 +802,7 @@ ip_vs_tunnel_xmit(struct sk_buff *skb, struct ip_vs_conn *cp,
 			IP_VS_ERR_RL("%s(): no memory\n", __func__);
 			return NF_STOLEN;
 		}
-		kfree_skb(skb);
+		consume_skb(skb);
 		skb = new_skb;
 		old_iph = ip_hdr(skb);
 	}
@@ -920,7 +920,7 @@ ip_vs_tunnel_xmit_v6(struct sk_buff *skb, struct ip_vs_conn *cp,
 			IP_VS_ERR_RL("%s(): no memory\n", __func__);
 			return NF_STOLEN;
 		}
-		kfree_skb(skb);
+		consume_skb(skb);
 		skb = new_skb;
 		old_iph = ipv6_hdr(skb);
 	}
