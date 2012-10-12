@@ -196,6 +196,7 @@ struct iscsi_cmd *iscsit_allocate_se_cmd(
 
 	ktime_get_ts(&tod);
 	cmd->se_cmd.recv_time = timespec_to_ktime(tod);
+	cmd->se_cmd.original_cpu = smp_processor_id();
 
 	cmd->data_direction = data_direction;
 	cmd->data_length = data_length;
