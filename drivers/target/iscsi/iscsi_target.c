@@ -782,6 +782,75 @@ static int iscsit_allocate_iovecs(struct iscsi_cmd *cmd)
 	return 0;
 }
 
+void iscsit_queue_deferred_cmd(struct iscsi_cmd *cmd)
+{
+	struct iscsi_conn *conn = cmd->conn;
+
+	spin_lock(&conn->deferred_cmd_lock);
+	list_add_tail(&cmd->deferred_list, &conn->deferred_cmd_list);
+	spin_unlock(&conn->deferred_cmd_lock);
+
+	wake_up_interruptible(&conn->deferred_wq);
+}
+
+static void iscsit_handle_deferred_read(struct iscsi_cmd *cmd)
+{
+	struct se_cmd *se_cmd = &cmd->se_cmd;
+	int ret;
+
+	se_cmd->alloc_cmd_mem_flags = 0;
+	ret = transport_generic_new_cmd(&cmd->se_cmd);
+	if (ret < 0) {
+		/* Treat this as a transport error. This also stops
+		 * iscsit_free_cmd from calling transport_generic_free_cmd */
+		iscsit_add_reject_from_cmd(
+			ISCSI_REASON_BOOKMARK_NO_RESOURCES,
+			1, 1, cmd->deferred_hdr, cmd);
+
+		atomic_set(&cmd->conn->transport_failed, 1);
+		send_sig(SIGINT, cmd->conn->thread_set->rx_thread, 1);
+	}
+}
+
+static void iscsit_handle_deferred_write(struct iscsi_cmd *cmd)
+{
+	struct se_cmd *se_cmd = &cmd->se_cmd;
+	struct scatterlist *sgl;
+	unsigned int nents;
+	int ret, i;
+
+	/* Take ownership of the deferred memory */
+	sgl = se_cmd->t_data_sg;
+	nents = se_cmd->t_data_nents;
+	se_cmd->t_data_sg = NULL;
+	se_cmd->t_data_nents = 0;
+	cmd->have_deferred_mem = false;
+
+	se_cmd->alloc_cmd_mem_flags = 0;
+	ret = transport_generic_new_cmd(&cmd->se_cmd);
+	if (ret < 0) {
+		/* Treat this as a transport error. This also stops
+		 * iscsit_free_cmd from calling transport_generic_free_cmd */
+		iscsit_add_reject_from_cmd(
+			ISCSI_REASON_BOOKMARK_NO_RESOURCES,
+			1, 1, cmd->deferred_hdr, cmd);
+
+		atomic_set(&cmd->conn->transport_failed, 1);
+		send_sig(SIGINT, cmd->conn->thread_set->rx_thread, 1);
+	} else {
+		iscsit_copy_deferred_mem(cmd, sgl, nents);
+	}
+
+	/* Free the deferred memory that we now own */
+	for (i = 0; i < nents; i++)
+		__free_page(sg_page(&sgl[i]));
+	kfree(sgl);
+
+	if (ret >= 0) {
+		transport_generic_handle_data(se_cmd);
+	}
+}
+
 static int iscsit_handle_scsi_cmd(
 	struct iscsi_conn *conn,
 	unsigned char *buf)
@@ -1056,18 +1125,61 @@ attach_cmd:
 		dump_immediate_data = 1;
 		goto after_immediate_data;
 	}
+
+	/*
+	 * If the iblock device has no buffers to give us, then don't block
+	 * waiting for them because we're not going to free buffers until
+	 * we receive either read ACKs or DATA_OUT segments from the initiator.
+	 *
+	 * For reads we defer the command, scheduling a work item for later.
+	 *
+	 * For writes, we allocate pages to store immediate data, unsolicited
+	 * data and all subsequent data. When all the write data is present
+	 * we then use a work item to allocate real backend memory.
+	 * (It would be better instead to only allocate FirstBurstLength
+	 * pages and delay the R2T until later. That is for later)
+	 */
+	cmd->se_cmd.alloc_cmd_mem_flags = CMD_A_FAIL_WHEN_EMPTY;
+
 	/*
 	 * Call directly into transport_generic_new_cmd() to perform
 	 * the backend memory allocation.
 	 */
 	ret = transport_generic_new_cmd(&cmd->se_cmd);
 	if (ret < 0) {
+		if (cmd->se_cmd.alloc_cmd_mem_flags & CMD_A_FAILED_EMPTY) {
+			/*
+			 * Save the hdr so that the command can be rejected later
+			 * if necessary.
+			 */
+			cmd->deferred_hdr = kmemdup(hdr, ISCSI_HDR_LEN, GFP_KERNEL);
+			if (!cmd->deferred_hdr) {
+				immed_ret = IMMEDIATE_DATA_NORMAL_OPERATION;
+				dump_immediate_data = 1;
+				goto after_immediate_data;
+			}
+
+			if (data_direction == DMA_FROM_DEVICE) {
+				iscsit_queue_deferred_cmd(cmd);
+				return 0;
+			} else if (data_direction == DMA_TO_DEVICE) {
+				ret = iscsit_alloc_deferred_mem(cmd, hdr);
+				if (!ret) {
+					goto immediate_data;
+				}
+			} else {
+				/* XXX: Anything here? */
+			}
+		}
+
 		immed_ret = IMMEDIATE_DATA_NORMAL_OPERATION;
 		dump_immediate_data = 1;
 		goto after_immediate_data;
 	}
 
+immediate_data:
 	immed_ret = iscsit_handle_immediate_data(cmd, buf, payload_length);
+
 after_immediate_data:
 	if (immed_ret == IMMEDIATE_DATA_NORMAL_OPERATION) {
 		/*
@@ -1400,8 +1512,15 @@ static int iscsit_handle_data_out(struct iscsi_conn *conn, unsigned char *buf)
 		spin_unlock_bh(&cmd->istate_lock);
 
 		iscsit_stop_dataout_timer(cmd);
-		return (!ooo_cmdsn) ? transport_generic_handle_data(
-					&cmd->se_cmd) : 0;
+		if (ooo_cmdsn)
+			return 0;
+		else if (cmd->se_cmd.alloc_cmd_mem_flags & CMD_A_FAILED_EMPTY) {
+			iscsit_queue_deferred_cmd(cmd);
+			return 0;
+		} else {
+			transport_generic_handle_data(&cmd->se_cmd);
+			return 0;
+		}
 	} else /* DATAOUT_CANNOT_RECOVER */
 		return -1;
 
@@ -3410,6 +3529,10 @@ static inline void iscsit_thread_check_cpumask(
 		if (!conn->conn_tx_reset_cpumask)
 			return;
 		conn->conn_tx_reset_cpumask = 0;
+	} else if (mode == 2) {
+		if (!conn->conn_deferred_reset_cpumask)
+			return;
+		conn->conn_deferred_reset_cpumask = 0;
 	} else {
 		if (!conn->conn_rx_reset_cpumask)
 			return;
@@ -3914,6 +4037,76 @@ out:
 	return 0;
 }
 
+int iscsi_target_deferred_thread(void *arg)
+{
+	struct iscsi_thread_set *ts = arg;
+	struct iscsi_conn *conn;
+	struct iscsi_cmd *cmd;
+	int defcmds, draincmds;
+	int ret;
+
+	allow_signal(SIGINT);
+
+restart:
+	conn = iscsi_deferred_thread_pre_handler(ts);
+	if (!conn)
+		return 0;
+
+	defcmds = draincmds = 0;
+
+	while (!kthread_should_stop()) {
+		iscsit_thread_check_cpumask(conn, current, 2);
+
+		wait_event_interruptible(conn->deferred_wq, ({
+				int ret;
+				spin_lock(&conn->deferred_cmd_lock);
+				ret = !list_empty(&conn->deferred_cmd_list);
+				spin_unlock(&conn->deferred_cmd_lock);
+				(ret);
+			}));
+		if ((ts->status == ISCSI_THREAD_SET_RESET) || signal_pending(current))
+			break;
+
+		spin_lock(&conn->deferred_cmd_lock);
+		if (list_empty(&conn->deferred_cmd_list)) {
+			spin_unlock(&conn->deferred_cmd_lock);
+			continue;
+		}
+		cmd = list_first_entry(&conn->deferred_cmd_list, struct iscsi_cmd,
+				       deferred_list);
+		list_del(&cmd->deferred_list);
+		spin_unlock(&conn->deferred_cmd_lock);
+
+		++defcmds;
+		if (defcmds == 1)
+			pr_info("%s/%d: deferred thread (thread set %d) handling %s cmd\n",
+				current->comm, task_pid_nr(current), ts->thread_id,
+				cmd->data_direction == DMA_FROM_DEVICE ? "read" : "write");
+
+		if (cmd->data_direction == DMA_FROM_DEVICE)
+			iscsit_handle_deferred_read(cmd);
+		else if (cmd->data_direction == DMA_TO_DEVICE)
+			iscsit_handle_deferred_write(cmd);
+	}
+
+	/*
+	 * Drain the remaining requests. Call iscsit_add_reject_from_cmd() to
+	 * set ISCSI_OP_REJECT so that iscsit_free_cmd() doesn't call
+	 * transport_generic_free_cmd().
+	 */
+	list_for_each_entry(cmd, &conn->deferred_cmd_list, deferred_list) {
+		++draincmds;
+		iscsit_add_reject_from_cmd(
+			ISCSI_REASON_BOOKMARK_NO_RESOURCES,
+			1, 1, cmd->deferred_hdr, cmd);
+	}
+
+	pr_info("%s/%d: deferred thread (thread set %d) going back to restart (%d cmds, %d drained)\n",
+		current->comm, task_pid_nr(current), ts->thread_id,
+		defcmds, draincmds);
+	goto restart;
+}
+
 static void iscsit_release_commands_from_conn(struct iscsi_conn *conn)
 {
 	struct iscsi_cmd *cmd = NULL, *cmd_tmp = NULL;
@@ -3968,6 +4161,9 @@ int iscsit_close_connection(
 
 	iscsi_release_thread_set(conn);
 
+	/*
+	 * Ensure that all deferred requests have been cancelled
+	 */
 	iscsit_stop_timers_for_cmds(conn);
 	iscsit_stop_nopin_response_timer(conn);
 	iscsit_stop_nopin_timer(conn);

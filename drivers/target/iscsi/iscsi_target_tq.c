@@ -110,8 +110,10 @@ extern int iscsi_allocate_thread_sets(u32 thread_pair_count)
 		init_completion(&ts->tx_post_start_comp);
 		init_completion(&ts->rx_restart_comp);
 		init_completion(&ts->tx_restart_comp);
+		init_completion(&ts->deferred_restart_comp);
 		init_completion(&ts->rx_start_comp);
 		init_completion(&ts->tx_start_comp);
+		init_completion(&ts->deferred_start_comp);
 
 		ts->create_threads = 1;
 		ts->tx_thread = kthread_run(iscsi_target_tx_thread, ts, "%s-%d",
@@ -129,6 +131,15 @@ extern int iscsi_allocate_thread_sets(u32 thread_pair_count)
 			pr_err("Unable to start iscsi_target_rx_thread\n");
 			break;
 		}
+
+		ts->deferred_thread = kthread_run(iscsi_target_deferred_thread, ts, "%s-%d",
+					ISCSI_DEFERRED_THREAD_NAME, thread_id);
+		if (IS_ERR(ts->deferred_thread)) {
+			kthread_stop(ts->rx_thread);
+			kthread_stop(ts->tx_thread);
+			pr_err("Unable to start iscsi_target_deferred_thread\n");
+			break;
+		}
 		ts->create_threads = 0;
 
 		iscsi_add_ts_to_inactive_list(ts);
@@ -136,7 +147,7 @@ extern int iscsi_allocate_thread_sets(u32 thread_pair_count)
 	}
 
 	pr_debug("Spawned %d thread set(s) (%d total threads).\n",
-		allocated_thread_pair_count, allocated_thread_pair_count * 2);
+		allocated_thread_pair_count, allocated_thread_pair_count * 3);
 	return allocated_thread_pair_count;
 }
 
@@ -159,6 +170,10 @@ extern void iscsi_deallocate_thread_sets(void)
 			send_sig(SIGINT, ts->tx_thread, 1);
 			kthread_stop(ts->tx_thread);
 		}
+		if (ts->deferred_thread) {
+			send_sig(SIGINT, ts->deferred_thread, 1);
+			kthread_stop(ts->deferred_thread);
+		}
 		/*
 		 * Release this thread_id in the thread_set_bitmap
 		 */
@@ -173,7 +188,7 @@ extern void iscsi_deallocate_thread_sets(void)
 
 	if (released_count)
 		pr_debug("Stopped %d thread set(s) (%d total threads)."
-			"\n", released_count, released_count * 2);
+			"\n", released_count, released_count * 3);
 }
 
 static void iscsi_deallocate_extra_thread_sets(void)
@@ -232,6 +247,7 @@ void iscsi_activate_thread_set(struct iscsi_conn *conn, struct iscsi_thread_set 
 	 * iscsi_rx_thread_pre_handler().
 	 */
 	complete(&ts->rx_start_comp);
+	complete(&ts->deferred_start_comp);
 	wait_for_completion(&ts->rx_post_start_comp);
 }
 
@@ -261,9 +277,10 @@ get_set:
 
 	ts->delay_inactive = 1;
 	ts->signal_sent = 0;
-	ts->thread_count = 2;
+	ts->thread_count = 3;
 	init_completion(&ts->rx_restart_comp);
 	init_completion(&ts->tx_restart_comp);
+	init_completion(&ts->deferred_restart_comp);
 
 	return ts;
 }
@@ -287,6 +304,9 @@ void iscsi_set_thread_clear(struct iscsi_conn *conn, u8 thread_clear)
 	else if ((thread_clear & ISCSI_CLEAR_TX_THREAD) &&
 		 (ts->blocked_threads & ISCSI_BLOCK_TX_THREAD))
 		complete(&ts->tx_restart_comp);
+	else if ((thread_clear & ISCSI_CLEAR_DEFERRED_THREAD) &&
+		 (ts->blocked_threads & ISCSI_BLOCK_DEFERRED_THREAD))
+		complete(&ts->deferred_restart_comp);
 	spin_unlock_bh(&ts->ts_state_lock);
 }
 
@@ -351,6 +371,17 @@ int iscsi_release_thread_set(struct iscsi_conn *conn)
 		wait_for_completion(&ts->tx_restart_comp);
 		spin_lock_bh(&ts->ts_state_lock);
 		ts->blocked_threads &= ~ISCSI_BLOCK_TX_THREAD;
+	}
+	if (ts->deferred_thread && (ts->thread_clear & ISCSI_CLEAR_DEFERRED_THREAD)) {
+		if (!(ts->signal_sent & ISCSI_SIGNAL_DEFERRED_THREAD)) {
+			send_sig(SIGINT, ts->deferred_thread, 1);
+			ts->signal_sent |= ISCSI_SIGNAL_DEFERRED_THREAD;
+		}
+		ts->blocked_threads |= ISCSI_BLOCK_DEFERRED_THREAD;
+		spin_unlock_bh(&ts->ts_state_lock);
+		wait_for_completion(&ts->deferred_restart_comp);
+		spin_lock_bh(&ts->ts_state_lock);
+		ts->blocked_threads &= ~ISCSI_BLOCK_DEFERRED_THREAD;
 	}
 
 	ts->conn = NULL;
@@ -519,6 +550,59 @@ sleep:
 	spin_lock_bh(&ts->ts_state_lock);
 	ts->status = ISCSI_THREAD_SET_ACTIVE;
 	spin_unlock_bh(&ts->ts_state_lock);
+
+	return ts->conn;
+}
+
+struct iscsi_conn *iscsi_deferred_thread_pre_handler(struct iscsi_thread_set *ts)
+{
+	int ret;
+
+	spin_lock_bh(&ts->ts_state_lock);
+	if (ts->create_threads) {
+		spin_unlock_bh(&ts->ts_state_lock);
+		goto sleep;
+	}
+
+	flush_signals(current);
+
+	if (ts->delay_inactive && (--ts->thread_count == 0)) {
+		spin_unlock_bh(&ts->ts_state_lock);
+		iscsi_del_ts_from_active_list(ts);
+
+		if (!iscsit_global->in_shutdown)
+			iscsi_deallocate_extra_thread_sets();
+
+		iscsi_add_ts_to_inactive_list(ts);
+		spin_lock_bh(&ts->ts_state_lock);
+	}
+
+	if ((ts->status == ISCSI_THREAD_SET_RESET) &&
+	    (ts->thread_clear & ISCSI_CLEAR_DEFERRED_THREAD))
+		complete(&ts->deferred_restart_comp);
+
+	ts->thread_clear &= ~ISCSI_CLEAR_DEFERRED_THREAD;
+	spin_unlock_bh(&ts->ts_state_lock);
+sleep:
+	ret = wait_for_completion_interruptible(&ts->deferred_start_comp);
+	if (ret != 0)
+		return NULL;
+
+	if (iscsi_signal_thread_pre_handler(ts) < 0)
+		return NULL;
+
+	if (!ts->conn) {
+		pr_err("struct iscsi_thread_set->conn is NULL for "
+			" thread_id: %d, going back to sleep\n",
+			ts->thread_id);
+		goto sleep;
+	}
+
+	iscsi_check_to_add_additional_sets();
+	ts->thread_clear |= ISCSI_CLEAR_DEFERRED_THREAD;
+
+	pr_info("%s/%d: returning connection %p for deferred thread\n",
+		current->comm, task_pid_nr(current), ts->conn);
 
 	return ts->conn;
 }

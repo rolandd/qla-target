@@ -255,7 +255,12 @@ static int iscsit_task_reassign_complete_write(
 			pr_debug("WRITE ITT: 0x%08x: t_state: %d"
 				" never sent to transport\n",
 				cmd->init_task_tag, cmd->se_cmd.t_state);
-			return transport_generic_handle_data(se_cmd);
+			if (cmd->se_cmd.alloc_cmd_mem_flags & CMD_A_FAILED_EMPTY) {
+				iscsit_queue_deferred_cmd(cmd);
+				return 0;
+			} else {
+				return transport_generic_handle_data(se_cmd);
+			}
 		}
 
 		cmd->i_state = ISTATE_SEND_STATUS;

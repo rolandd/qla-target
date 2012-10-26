@@ -15,6 +15,7 @@ extern void iscsi_set_thread_set_signal(struct iscsi_conn *, u8);
 extern int iscsi_release_thread_set(struct iscsi_conn *);
 extern struct iscsi_conn *iscsi_rx_thread_pre_handler(struct iscsi_thread_set *);
 extern struct iscsi_conn *iscsi_tx_thread_pre_handler(struct iscsi_thread_set *);
+extern struct iscsi_conn *iscsi_deferred_thread_pre_handler(struct iscsi_thread_set *);
 extern int iscsi_thread_set_init(void);
 extern void iscsi_thread_set_free(void);
 
@@ -27,12 +28,16 @@ extern int iscsi_target_rx_thread(void *);
 #define ISCSI_TX_THREAD                         2
 #define ISCSI_RX_THREAD_NAME			"iscsi_trx"
 #define ISCSI_TX_THREAD_NAME			"iscsi_ttx"
+#define ISCSI_DEFERRED_THREAD_NAME		"iscsi_tdef"
 #define ISCSI_BLOCK_RX_THREAD			0x1
 #define ISCSI_BLOCK_TX_THREAD			0x2
+#define ISCSI_BLOCK_DEFERRED_THREAD		0x4
 #define ISCSI_CLEAR_RX_THREAD			0x1
 #define ISCSI_CLEAR_TX_THREAD			0x2
+#define ISCSI_CLEAR_DEFERRED_THREAD		0x4
 #define ISCSI_SIGNAL_RX_THREAD			0x1
 #define ISCSI_SIGNAL_TX_THREAD			0x2
+#define	ISCSI_SIGNAL_DEFERRED_THREAD		0x4
 
 /* struct iscsi_thread_set->status */
 #define ISCSI_THREAD_SET_FREE			1
@@ -73,14 +78,20 @@ struct iscsi_thread_set {
 	struct completion	rx_restart_comp;
 	/* used for restarting thread queue */
 	struct completion	tx_restart_comp;
+	/* used for restarting thread queue */
+	struct completion	deferred_restart_comp;
 	/* used for normal unused blocking */
 	struct completion	rx_start_comp;
 	/* used for normal unused blocking */
 	struct completion	tx_start_comp;
+	/* used for normal unused blocking */
+	struct completion	deferred_start_comp;
 	/* OS descriptor for rx thread */
 	struct task_struct	*rx_thread;
 	/* OS descriptor for tx thread */
 	struct task_struct	*tx_thread;
+	/* OS descriptor for deferred thread */
+	struct task_struct	*deferred_thread;
 	/* struct iscsi_thread_set in list list head*/
 	struct list_head	ts_list;
 };

@@ -44,10 +44,12 @@ extern spinlock_t sess_idr_lock;
 
 static int iscsi_login_init_conn(struct iscsi_conn *conn)
 {
+	init_waitqueue_head(&conn->deferred_wq);
 	INIT_LIST_HEAD(&conn->conn_list);
 	INIT_LIST_HEAD(&conn->conn_cmd_list);
 	INIT_LIST_HEAD(&conn->immed_queue_list);
 	INIT_LIST_HEAD(&conn->response_queue_list);
+	INIT_LIST_HEAD(&conn->deferred_cmd_list);
 	init_completion(&conn->conn_post_wait_comp);
 	init_completion(&conn->conn_wait_comp);
 	init_completion(&conn->conn_wait_rcfr_comp);
@@ -60,6 +62,7 @@ static int iscsi_login_init_conn(struct iscsi_conn *conn)
 	spin_lock_init(&conn->immed_queue_lock);
 	spin_lock_init(&conn->nopin_timer_lock);
 	spin_lock_init(&conn->response_queue_lock);
+	spin_lock_init(&conn->deferred_cmd_lock);
 	spin_lock_init(&conn->state_lock);
 
 	if (!zalloc_cpumask_var(&conn->conn_cpumask, GFP_KERNEL)) {
@@ -638,6 +641,7 @@ static int iscsi_post_login_handler(
 		iscsit_thread_get_cpumask(conn);
 		conn->conn_rx_reset_cpumask = 1;
 		conn->conn_tx_reset_cpumask = 1;
+		conn->conn_deferred_reset_cpumask = 1;
 
 		iscsit_dec_conn_usage_count(conn);
 		if (stop_timer) {

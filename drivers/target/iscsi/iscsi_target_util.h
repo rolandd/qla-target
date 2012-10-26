@@ -58,4 +58,8 @@ extern int tx_data(struct iscsi_conn *, struct kvec *, int, int);
 extern void iscsit_collect_login_stats(struct iscsi_conn *, u8, u8);
 extern struct iscsi_tiqn *iscsit_snmp_get_tiqn(struct iscsi_conn *);
 
+extern int iscsit_alloc_deferred_mem(struct iscsi_cmd *, struct iscsi_scsi_req *);
+extern void iscsit_free_deferred_mem(struct iscsi_cmd *);
+extern void iscsit_copy_deferred_mem(struct iscsi_cmd *, struct scatterlist *, unsigned int);
+
 #endif /*** ISCSI_TARGET_UTIL_H ***/

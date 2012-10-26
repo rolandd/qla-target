@@ -23,12 +23,15 @@ extern int iscsit_build_r2ts_for_cmd(struct iscsi_cmd *, struct iscsi_conn *, in
 extern void iscsit_thread_get_cpumask(struct iscsi_conn *);
 extern int iscsi_target_tx_thread(void *);
 extern int iscsi_target_rx_thread(void *);
+extern int iscsi_target_deferred_thread(void *);
 extern int iscsit_close_connection(struct iscsi_conn *);
 extern int iscsit_close_session(struct iscsi_session *);
 extern void iscsit_fail_session(struct iscsi_session *);
 extern int iscsit_free_session(struct iscsi_session *);
 extern void iscsit_stop_session(struct iscsi_session *, int, int);
 extern int iscsit_release_sessions_for_tpg(struct iscsi_portal_group *, int);
+
+extern void iscsit_queue_deferred_cmd(struct iscsi_cmd *cmd);
 
 extern struct iscsit_global *iscsit_global;
 extern struct target_fabric_configfs *lio_target_fabric_configfs;

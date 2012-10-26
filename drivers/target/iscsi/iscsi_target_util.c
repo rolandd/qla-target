@@ -836,6 +836,9 @@ void iscsit_release_cmd(struct iscsi_cmd *cmd)
 
 void iscsit_free_cmd(struct iscsi_cmd *cmd)
 {
+	iscsit_free_deferred_mem(cmd);
+	kfree(cmd->deferred_hdr);
+
 	/*
 	 * Determine if a struct se_cmd is assoicated with
 	 * this struct iscsi_cmd.
@@ -1609,4 +1612,108 @@ struct iscsi_tiqn *iscsit_snmp_get_tiqn(struct iscsi_conn *conn)
 		return NULL;
 
 	return tpg->tpg_tiqn;
+}
+
+int iscsit_alloc_deferred_mem(
+	struct iscsi_cmd *cmd,
+	struct iscsi_scsi_req *hdr)
+{
+	struct se_cmd *se_cmd = &cmd->se_cmd;
+	u32 length = cmd->data_length;
+	unsigned int nents;
+	struct page *page;
+	int i = 0;
+
+	cmd->deferred_hdr = kmemdup(hdr, ISCSI_HDR_LEN, GFP_KERNEL);
+	if (!cmd->deferred_hdr)
+		return -ENOMEM;
+
+	nents = DIV_ROUND_UP(length, PAGE_SIZE);
+	se_cmd->t_data_sg = kmalloc(sizeof(struct scatterlist) * nents, GFP_KERNEL);
+	if (!se_cmd->t_data_sg)
+		return -ENOMEM;
+
+	se_cmd->t_data_nents = nents;
+	sg_init_table(se_cmd->t_data_sg, nents);
+
+	while (length) {
+		u32 page_len = min_t(u32, length, PAGE_SIZE);
+		page = alloc_page(GFP_KERNEL);
+		if (!page)
+			goto out;
+
+		sg_set_page(&se_cmd->t_data_sg[i], page, page_len, 0);
+		length -= page_len;
+		i++;
+	}
+
+	cmd->have_deferred_mem = true;
+	return 0;
+
+out:
+	while (i >= 0) {
+		__free_page(sg_page(&se_cmd->t_data_sg[i]));
+		i--;
+	}
+	kfree(se_cmd->t_data_sg);
+	se_cmd->t_data_sg = NULL;
+	se_cmd->t_data_nents = 0;
+	return -ENOMEM;
+}
+
+void iscsit_free_deferred_mem(
+	struct iscsi_cmd *cmd)
+{
+	struct se_cmd *se_cmd = &cmd->se_cmd;
+	unsigned int i;
+
+	if (cmd->have_deferred_mem) {
+		for (i = 0; i < se_cmd->t_data_nents; i++)
+			__free_page(sg_page(&se_cmd->t_data_sg[i]));
+		kfree(se_cmd->t_data_sg);
+		se_cmd->t_data_nents = 0;
+
+		cmd->have_deferred_mem = false;
+	}
+}
+
+void iscsit_copy_deferred_mem(
+	struct iscsi_cmd *cmd,
+	struct scatterlist *sgl,
+	unsigned int nents)
+{
+	struct se_cmd *se_cmd = &cmd->se_cmd;
+	unsigned int cmd_offset = 0, source_offset = 0, dest_offset = 0;
+	unsigned int length = cmd->data_length, chunk_len;
+	struct sg_mapping_iter source, dest;
+	bool ret;
+
+	pr_debug("copying %d bytes from sglist#%d to sglist#%d\n",
+		 length, nents, se_cmd->t_data_nents);
+
+	sg_miter_start(&source, sgl, nents, SG_MITER_FROM_SG);
+	sg_miter_start(&dest, se_cmd->t_data_sg, se_cmd->t_data_nents, SG_MITER_TO_SG);
+
+	while (cmd_offset < length) {
+		if (source_offset == source.length) {
+			ret = sg_miter_next(&source);
+			WARN_ON(!ret);
+			source_offset = 0;
+		}
+		if (dest_offset == dest.length) {
+			ret = sg_miter_next(&dest);
+			WARN_ON(!ret);
+			dest_offset = 0;
+		}
+
+		chunk_len = min(source.length - source_offset,
+				dest.length - dest_offset);
+		BUG_ON(chunk_len == 0);
+		memcpy(dest.addr + dest_offset, source.addr + source_offset, chunk_len);
+		source_offset += chunk_len;
+		dest_offset += chunk_len;
+		cmd_offset += chunk_len;
+	}
+	sg_miter_stop(&source);
+	sg_miter_stop(&dest);
 }

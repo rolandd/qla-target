@@ -356,13 +356,28 @@ static struct ps_ioreq * iblock_ps_alloc(struct request_queue *q,
 					 void *endio_priv)
 {
 	struct exec2_ps_nexus nexus;
+	struct ps_ioreq *iop;
 
 	target_session_i_t_nexus(cmd, &nexus.initiator,
 				 &nexus.initiator_len, &nexus.target,
 				 &nexus.target_len);
-	return q->alloc_ps_buf_fn(q, size, opcode, &cmd->t_data_sg,
-				  &cmd->t_data_nents, &nexus, endio,
-				  endio_priv);
+
+	if (cmd->alloc_cmd_mem_flags & CMD_A_FAIL_WHEN_EMPTY)
+		opcode |= PS_IO_FLAG_NOWAIT;
+
+	iop = q->alloc_ps_buf_fn(q, size, opcode, &cmd->t_data_sg,
+				 &cmd->t_data_nents, &nexus, endio,
+				 endio_priv);
+
+	if (IS_ERR(iop)) {
+		if (PTR_ERR(iop) == -EAGAIN) {
+			WARN_ON(!(cmd->alloc_cmd_mem_flags & CMD_A_FAIL_WHEN_EMPTY));
+			iop = ERR_PTR(-ENOMEM);
+			cmd->alloc_cmd_mem_flags |= CMD_A_FAILED_EMPTY;
+		}
+	}
+
+	return iop;
 }
 
 static int iblock_alloc_cmd_mem(struct se_cmd *cmd)

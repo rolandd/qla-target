@@ -4088,8 +4088,10 @@ int transport_generic_new_cmd(struct se_cmd *cmd)
 	return 0;
 
 out_fail:
-	cmd->se_cmd_flags |= SCF_SCSI_CDB_EXCEPTION;
-	cmd->scsi_sense_reason = TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;
+	if (!(cmd->alloc_cmd_mem_flags & CMD_A_FAILED_EMPTY)) {
+		cmd->se_cmd_flags |= SCF_SCSI_CDB_EXCEPTION;
+		cmd->scsi_sense_reason = TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;
+	}
 	return -EINVAL;
 }
 EXPORT_SYMBOL(transport_generic_new_cmd);

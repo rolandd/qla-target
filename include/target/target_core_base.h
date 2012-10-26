@@ -578,6 +578,10 @@ struct se_cmd {
 	struct ps_ioreq		*ps_iop;
 	int			ps_opcode;
 
+	unsigned int		alloc_cmd_mem_flags;
+#define CMD_A_FAIL_WHEN_EMPTY		(1 << 0)	/* iblock_alloc_cmd_mem fails when there are no buffers */
+#define CMD_A_FAILED_EMPTY		(1 << 1)	/* iblock_alloc_cmd_mem failed because there were no buffers */
+
 	struct kref		cmd_kref;
 	struct target_core_fabric_ops *se_tfo;
 	int (*execute_task)(struct se_task *);

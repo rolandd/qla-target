@@ -970,8 +970,14 @@ int iscsit_execute_cmd(struct iscsi_cmd *cmd, int ooo)
 		if (cmd->immediate_data) {
 			if (cmd->cmd_flags & ICF_GOT_LAST_DATAOUT) {
 				spin_unlock_bh(&cmd->istate_lock);
-				return transport_generic_handle_data(
+
+				if (se_cmd->alloc_cmd_mem_flags & CMD_A_FAILED_EMPTY) {
+					iscsit_queue_deferred_cmd(cmd);
+					return 0;
+				} else {
+					return transport_generic_handle_data(
 						&cmd->se_cmd);
+				}
 			}
 			spin_unlock_bh(&cmd->istate_lock);
 

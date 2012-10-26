@@ -235,6 +235,10 @@ typedef enum blk_eh_timer_return (rq_timed_out_fn)(struct request *);
 #define	PS_IO_RESERVE		12	/* I/O request is a RESERVE(6) */
 #define	PS_IO_LUN_RESET		13	/* I/O request is a LUN_RESET */
 
+/* Flags that can be masked into PS_IO_* to control memory allocation */
+#define PS_IO_FLAG_MASK		0xffffff
+#define PS_IO_FLAG_NOWAIT	(1 << 30)
+
 struct ps_ioreq;
 
 /*

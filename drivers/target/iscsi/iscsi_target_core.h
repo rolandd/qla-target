@@ -465,6 +465,10 @@ struct iscsi_cmd {
 	struct iscsi_session	*sess;
 	/* list_head for connection list */
 	struct list_head	i_list;
+	/* Deferred command support */
+	struct list_head	deferred_list;
+	void *			deferred_hdr;
+	bool			have_deferred_mem;
 	/* The TCM I/O descriptor that is accessed via container_of() */
 	struct se_cmd		se_cmd;
 	/* Sense buffer that will be mapped into outgoing status */
@@ -489,6 +493,7 @@ struct iscsi_tmr_req {
 };
 
 struct iscsi_conn {
+	wait_queue_head_t	deferred_wq;
 	/* Authentication Successful for this connection */
 	u8			auth_complete;
 	/* State connection is currently in */
@@ -554,6 +559,7 @@ struct iscsi_conn {
 	spinlock_t		immed_queue_lock;
 	spinlock_t		nopin_timer_lock;
 	spinlock_t		response_queue_lock;
+	spinlock_t		deferred_cmd_lock;
 	spinlock_t		state_lock;
 	/* libcrypto RX and TX contexts for crc32c */
 	struct hash_desc	conn_rx_hash;
@@ -562,10 +568,12 @@ struct iscsi_conn {
 	cpumask_var_t		conn_cpumask;
 	unsigned int		conn_rx_reset_cpumask:1;
 	unsigned int		conn_tx_reset_cpumask:1;
+	unsigned int		conn_deferred_reset_cpumask:1;
 	/* list_head of struct iscsi_cmd for this connection */
 	struct list_head	conn_cmd_list;
 	struct list_head	immed_queue_list;
 	struct list_head	response_queue_list;
+	struct list_head	deferred_cmd_list;
 	struct iscsi_conn_ops	*conn_ops;
 	struct iscsi_param_list	*param_list;
 	/* Used for per connection auth state machine */
