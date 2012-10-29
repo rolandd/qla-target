@@ -167,6 +167,9 @@ static rx_handler_result_t macvlan_handle_frame(struct sk_buff **pskb)
 	int ret = NET_RX_DROP;
 
 	port = macvlan_port_get_rcu(skb->dev);
+	if (!port)
+		return RX_HANDLER_PASS;
+
 	if (is_multicast_ether_addr(eth->h_dest)) {
 		src = macvlan_hash_lookup(port, eth->h_source);
 		if (!src)
