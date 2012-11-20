@@ -215,6 +215,10 @@ static void iscsi_deallocate_extra_thread_sets(void)
 			send_sig(SIGINT, ts->tx_thread, 1);
 			kthread_stop(ts->tx_thread);
 		}
+		if (ts->deferred_thread) {
+			send_sig(SIGINT, ts->deferred_thread, 1);
+			kthread_stop(ts->deferred_thread);
+		}
 		/*
 		 * Release this thread_id in the thread_set_bitmap
 		 */
@@ -351,6 +355,10 @@ int iscsi_release_thread_set(struct iscsi_conn *conn)
 	else if (!strncmp(current->comm, ISCSI_TX_THREAD_NAME,
 			strlen(ISCSI_TX_THREAD_NAME)))
 		thread_called = ISCSI_TX_THREAD;
+	else if (!strncmp(current->comm, ISCSI_DEFERRED_THREAD_NAME,
+			  strlen(ISCSI_DEFERRED_THREAD_NAME))) {
+		WARN_ONCE(1, "iscsi_release_thread_set called from deferred thread\n");
+	}
 
 	pr_info("%s/%d: thread set %d release thread set from thread %d\n",
 		current->comm, task_pid_nr(current), ts->thread_id,
@@ -422,6 +430,10 @@ int iscsi_thread_set_force_reinstatement(struct iscsi_conn *conn)
 	if (ts->rx_thread && (!(ts->signal_sent & ISCSI_SIGNAL_RX_THREAD))) {
 		send_sig(SIGINT, ts->rx_thread, 1);
 		ts->signal_sent |= ISCSI_SIGNAL_RX_THREAD;
+	}
+	if (ts->deferred_thread && (!(ts->signal_sent & ISCSI_SIGNAL_DEFERRED_THREAD))) {
+		send_sig(SIGINT, ts->deferred_thread, 1);
+		ts->signal_sent |= ISCSI_SIGNAL_DEFERRED_THREAD;
 	}
 	spin_unlock_bh(&ts->ts_state_lock);
 
@@ -499,7 +511,9 @@ sleep:
 	/*
 	 * The RX Thread starts up the TX Thread and sleeps.
 	 */
+	spin_lock_bh(&ts->ts_state_lock);
 	ts->thread_clear |= ISCSI_CLEAR_RX_THREAD;
+	spin_unlock_bh(&ts->ts_state_lock);
 	complete(&ts->tx_start_comp);
 	wait_for_completion(&ts->tx_post_start_comp);
 
@@ -557,7 +571,9 @@ sleep:
 	 * sleeping on in iscsi_rx_thread_pre_handler(), then up the
 	 * rx_post_start_comp that iscsi_activate_thread_set() is sleeping on.
 	 */
+	spin_lock_bh(&ts->ts_state_lock);
 	ts->thread_clear |= ISCSI_CLEAR_TX_THREAD;
+	spin_unlock_bh(&ts->ts_state_lock);
 	complete(&ts->tx_post_start_comp);
 	complete(&ts->rx_post_start_comp);
 
@@ -615,7 +631,9 @@ sleep:
 	}
 
 	iscsi_check_to_add_additional_sets();
+	spin_lock_bh(&ts->ts_state_lock);
 	ts->thread_clear |= ISCSI_CLEAR_DEFERRED_THREAD;
+	spin_unlock_bh(&ts->ts_state_lock);
 
 	pr_info("%s/%d: returning connection %p for deferred thread\n",
 		current->comm, task_pid_nr(current), ts->conn);
