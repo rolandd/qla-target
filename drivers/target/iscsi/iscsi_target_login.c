@@ -620,10 +620,10 @@ static int iscsi_post_login_handler(
 			stop_timer = 1;
 		}
 
-		pr_info("%s/%d: iSCSI connection (nonzero tsih) #%d from %s SID: %u successful on CID: %hu from %s to %s:%hu,%hu\n",
+		pr_info("%s/%d: iSCSI connection (nonzero tsih) #%d from %s SID: %u successful on CID: %hu from %s:%hu to %s:%hu,%hu\n",
 			current->comm, task_pid_nr(current),
 			atomic_read(&sess->nconn) + 1, sess->sess_ops->InitiatorName,
-			sess->sid, conn->cid, conn->login_ip,
+			sess->sid, conn->cid, conn->login_ip, conn->login_port,
 			conn->local_ip, conn->local_port, tpg->tpgt);
 
 		list_add_tail(&conn->conn_list, &sess->sess_conn_list);
@@ -1084,9 +1084,9 @@ static int __iscsi_target_login_thread(struct iscsi_np *np)
 
 	conn->network_transport = np->np_network_transport;
 
-	pr_info("Received %s iSCSI login request from %s Network Portal %s:%hu\n",
+	pr_info("Received %s iSCSI login request from %s:%hu Network Portal %s:%hu\n",
 		(conn->network_transport == ISCSI_TCP) ? "TCP" : "SCTP",
-		conn->login_ip,
+		conn->login_ip, conn->login_port,
 		conn->local_ip, conn->local_port);
 
 	pr_debug("Moving to TARG_CONN_STATE_IN_LOGIN.\n");
