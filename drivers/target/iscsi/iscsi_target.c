@@ -4111,7 +4111,7 @@ restart:
 
 static void iscsit_release_commands_from_conn(struct iscsi_conn *conn)
 {
-	struct iscsi_cmd *cmd = NULL, *cmd_tmp = NULL;
+	struct iscsi_cmd *cmd;
 	struct iscsi_session *sess = conn->sess;
 	/*
 	 * We expect this function to only ever be called from either RX or TX
@@ -4119,13 +4119,12 @@ static void iscsit_release_commands_from_conn(struct iscsi_conn *conn)
 	 * has been reset -> returned sleeping pre-handler state.
 	 */
 	spin_lock_bh(&conn->cmd_lock);
-	list_for_each_entry_safe(cmd, cmd_tmp, &conn->conn_cmd_list, i_list) {
-
+	while (!list_empty(&conn->conn_cmd_list)) {
+		cmd = list_first_entry(&conn->conn_cmd_list, struct iscsi_cmd, i_list);
 		list_del(&cmd->i_list);
 		spin_unlock_bh(&conn->cmd_lock);
 
 		iscsit_increment_maxcmdsn(cmd, sess);
-
 		iscsit_free_cmd(cmd);
 
 		spin_lock_bh(&conn->cmd_lock);
