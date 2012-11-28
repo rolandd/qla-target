@@ -805,7 +805,7 @@ static void iscsit_handle_deferred_read(struct iscsi_cmd *cmd)
 		 * iscsit_free_cmd from calling transport_generic_free_cmd */
 		iscsit_add_reject_from_cmd(
 			ISCSI_REASON_BOOKMARK_NO_RESOURCES,
-			1, 1, cmd->deferred_hdr, cmd);
+			1, 0, cmd->deferred_hdr, cmd);
 
 		atomic_set(&cmd->conn->transport_failed, 1);
 		send_sig(SIGINT, cmd->conn->thread_set->rx_thread, 1);
@@ -833,7 +833,7 @@ static void iscsit_handle_deferred_write(struct iscsi_cmd *cmd)
 		 * iscsit_free_cmd from calling transport_generic_free_cmd */
 		iscsit_add_reject_from_cmd(
 			ISCSI_REASON_BOOKMARK_NO_RESOURCES,
-			1, 1, cmd->deferred_hdr, cmd);
+			1, 0, cmd->deferred_hdr, cmd);
 
 		atomic_set(&cmd->conn->transport_failed, 1);
 		send_sig(SIGINT, cmd->conn->thread_set->rx_thread, 1);
@@ -4100,7 +4100,7 @@ restart:
 		++draincmds;
 		iscsit_add_reject_from_cmd(
 			ISCSI_REASON_BOOKMARK_NO_RESOURCES,
-			1, 1, cmd->deferred_hdr, cmd);
+			1, 0, cmd->deferred_hdr, cmd);
 	}
 
 	pr_info("%s/%d: deferred thread (thread set %d) going back to restart (%d cmds, %d drained)\n",
