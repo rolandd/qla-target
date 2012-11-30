@@ -54,6 +54,7 @@
 #include <trace/events/kmem.h>
 #include <linux/ftrace_event.h>
 #include <linux/memcontrol.h>
+#include <linux/ratelimit.h>
 
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
@@ -1812,6 +1813,8 @@ __alloc_pages_may_oom(gfp_t gfp_mask, unsigned int order,
 		 */
 		if (gfp_mask & __GFP_THISNODE)
 			goto out;
+		if (gfp_mask & __GFP_NO_OOM)
+			goto out;
 	}
 	/* Exhausted what can be done so it's blamo time */
 	out_of_memory(zonelist, gfp_mask, order, nodemask);
@@ -2248,10 +2251,23 @@ __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order,
 	page = get_page_from_freelist(gfp_mask|__GFP_HARDWALL, nodemask, order,
 			zonelist, high_zoneidx, ALLOC_WMARK_LOW|ALLOC_CPUSET,
 			preferred_zone, migratetype);
-	if (unlikely(!page))
-		page = __alloc_pages_slowpath(gfp_mask, order,
+	if (unlikely(!page)) {
+		/* Second attempt explicitly disabling the OOM killer */
+		page = __alloc_pages_slowpath(gfp_mask | __GFP_NO_OOM, order,
 				zonelist, high_zoneidx, nodemask,
 				preferred_zone, migratetype);
+		if (!page) {
+			/*
+			 * Final attempt on any NUMA node.  We'd rather take
+			 * the performance hit then go OOM.
+			 */
+			nodemask = NULL;
+			printk_ratelimited(KERN_ERR "Could not allocate numa-local order-%d page", order);
+			page = __alloc_pages_slowpath(gfp_mask, order,
+					zonelist, high_zoneidx, nodemask,
+					preferred_zone, migratetype);
+		}
+	}
 	put_mems_allowed();
 
 	trace_mm_page_alloc(page, order, gfp_mask, migratetype);
