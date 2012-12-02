@@ -4096,12 +4096,16 @@ restart:
 	 * set ISCSI_OP_REJECT so that iscsit_free_cmd() doesn't call
 	 * transport_generic_free_cmd().
 	 */
+	spin_lock(&conn->deferred_cmd_lock);
 	list_for_each_entry(cmd, &conn->deferred_cmd_list, deferred_list) {
 		++draincmds;
-		iscsit_add_reject_from_cmd(
-			ISCSI_REASON_BOOKMARK_NO_RESOURCES,
-			1, 0, cmd->deferred_hdr, cmd);
+		/* We can't call iscsit_add_reject_from_cmd() because the TX
+		 * thread has already been stopped so it would hang. Instead
+		 * just ensure that iscsit_free_cmd() frees up this command */
+		cmd->iscsi_opcode = ISCSI_OP_REJECT;
 	}
+	INIT_LIST_HEAD(&conn->deferred_cmd_list);
+	spin_unlock(&conn->deferred_cmd_lock);
 
 	pr_info("%s/%d: deferred thread (thread set %d) going back to restart (%d cmds, %d drained)\n",
 		current->comm, task_pid_nr(current), ts->thread_id,
