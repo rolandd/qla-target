@@ -1184,6 +1184,10 @@ static void iscsit_handle_dataout_timeout(unsigned long data)
 	sess = conn->sess;
 	na = iscsit_tpg_get_node_attrib(sess);
 
+	WARN(!sess->sess_ops,
+	     "Dataout timeout for cmd %p on CID %hu on SID %u\n",
+	     cmd, conn->cid, sess->sid);
+
 	if (!sess->sess_ops->ErrorRecoveryLevel) {
 		pr_debug("Unable to recover from DataOut timeout while"
 			" in ERL=0.\n");

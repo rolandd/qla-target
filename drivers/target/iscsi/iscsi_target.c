@@ -3842,8 +3842,13 @@ check_rsp_state:
 			case ISTATE_SEND_LOGOUTRSP:
 				spin_unlock(&cmd->istate_lock);
 				local_bh_enable();
-				if (!iscsit_logout_post_handler(cmd, conn))
+				if (!iscsit_logout_post_handler(cmd, conn)) {
+					pr_info("%s/%d: tx thread (thread set %d) "
+						"going back to restart after logout\n",
+						current->comm, task_pid_nr(current),
+						ts->thread_id);
 					goto restart;
+				}
 				local_bh_disable();
 				spin_lock(&cmd->istate_lock);
 				use_misc = 0;
@@ -3877,6 +3882,9 @@ check_rsp_state:
 
 transport_err:
 	iscsit_take_action_for_connection_exit(conn);
+
+	pr_info("%s/%d: tx thread (thread set %d) going back to restart\n",
+		current->comm, task_pid_nr(current), ts->thread_id);
 	goto restart;
 out:
 	return 0;
@@ -4034,6 +4042,9 @@ transport_err:
 	if (!signal_pending(current))
 		atomic_set(&conn->transport_failed, 1);
 	iscsit_take_action_for_connection_exit(conn);
+
+	pr_info("%s/%d: rx thread (thread set %d) going back to restart\n",
+		current->comm, task_pid_nr(current), ts->thread_id);
 	goto restart;
 out:
 	return 0;
@@ -4098,6 +4109,9 @@ restart:
 	 */
 	spin_lock(&conn->deferred_cmd_lock);
 	list_for_each_entry(cmd, &conn->deferred_cmd_list, deferred_list) {
+		pr_info("draining deferred command %p on CID %hu on SID %u\n",
+			cmd, conn->cid, conn->sess->sid);
+
 		++draincmds;
 		/* We can't call iscsit_add_reject_from_cmd() because the TX
 		 * thread has already been stopped so it would hang. Instead

@@ -406,6 +406,8 @@ int iscsi_release_thread_set(struct iscsi_conn *conn)
 	ts->status = ISCSI_THREAD_SET_FREE;
 	spin_unlock_bh(&ts->ts_state_lock);
 
+	pr_info("thread set %d released\n", ts->thread_id);
+
 	return 0;
 }
 
@@ -517,6 +519,9 @@ sleep:
 	complete(&ts->tx_start_comp);
 	wait_for_completion(&ts->tx_post_start_comp);
 
+	pr_info("%s/%d: returning connection %p for rx thread\n",
+		current->comm, task_pid_nr(current), ts->conn);
+
 	return ts->conn;
 }
 
@@ -580,6 +585,9 @@ sleep:
 	spin_lock_bh(&ts->ts_state_lock);
 	ts->status = ISCSI_THREAD_SET_ACTIVE;
 	spin_unlock_bh(&ts->ts_state_lock);
+
+	pr_info("%s/%d: returning connection %p for tx thread\n",
+		current->comm, task_pid_nr(current), ts->conn);
 
 	return ts->conn;
 }
