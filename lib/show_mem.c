@@ -5,6 +5,7 @@
  * All code subject to the GPL version 2.
  */
 
+#include <linux/hugetlb.h>
 #include <linux/mm.h>
 #include <linux/nmi.h>
 #include <linux/quicklist.h>
@@ -12,6 +13,7 @@
 void show_mem(unsigned int filter)
 {
 	pg_data_t *pgdat;
+	struct hstate *h = &default_hstate;
 	unsigned long total = 0, reserved = 0, shared = 0,
 		nonshared = 0, highmem = 0;
 
@@ -56,6 +58,9 @@ void show_mem(unsigned int filter)
 	printk("%lu pages reserved\n", reserved);
 	printk("%lu pages shared\n", shared);
 	printk("%lu pages non-shared\n", nonshared);
+	printk("HugePages_Total:   %5lu\n", h->nr_huge_pages);
+	printk("HugePages_Free:    %5lu\n", h->free_huge_pages);
+	printk("HugePages_Rsvd:    %5lu\n", h->resv_huge_pages);
 #ifdef CONFIG_QUICKLIST
 	printk("%lu pages in pagetable cache\n",
 		quicklist_total_size());
