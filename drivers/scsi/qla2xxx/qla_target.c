@@ -2450,8 +2450,6 @@ static void qla_tgt_do_ctio_completion(struct scsi_qla_host *vha, uint32_t handl
 
 	cmd = qla_tgt_ctio_to_cmd(vha, handle, ctio);
 	if (cmd == NULL) {
-		if (status != CTIO_SUCCESS)
-			qla_tgt_term_ctio_exchange(vha, ctio, NULL, status);
 		return;
 	}
 	se_cmd = &cmd->se_cmd;
