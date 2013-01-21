@@ -287,6 +287,7 @@ typedef struct _MPI2_CONFIG_PAGE_MAN_10 {
 struct MPT2SAS_DEVICE {
 	struct MPT2SAS_TARGET *sas_target;
 	unsigned int	lun;
+	unsigned int	busy_fails;
 	u32	flags;
 	u8	configured_lun;
 	u8	block;

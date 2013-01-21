@@ -55,6 +55,7 @@
 #include <linux/aer.h>
 #include <linux/raid_class.h>
 #include <linux/slab.h>
+#include <linux/blktrace_api.h>
 
 #include "mpt2sas_base.h"
 
@@ -3780,8 +3781,22 @@ _scsih_qcmd(struct Scsi_Host *shost, struct scsi_cmnd *scmd)
 	if (ioc->shost_recovery || ioc->ioc_link_reset_in_progress)
 		return SCSI_MLQUEUE_HOST_BUSY;
 	/* device busy with task management */
-	else if (sas_device_priv_data->block || sas_target_priv_data->tm_busy)
+	else if (sas_device_priv_data->block || sas_target_priv_data->tm_busy) {
+		blk_add_trace_msg(scmd->device->request_queue, "qcmd DEVICE_BUSY %u %x %x",
+				  sas_device_priv_data->busy_fails,
+				  sas_device_priv_data->block,
+				  sas_target_priv_data->tm_busy);
+		/* 150 fails is about 3 seconds (20ms per retry) */
+		if (++ sas_device_priv_data->busy_fails > 150) {
+			printk(KERN_ERR "SAS device hit 150 busy fails: block=%x tm_busy=%x\n",
+			      sas_device_priv_data->block,
+			      sas_target_priv_data->tm_busy);
+			scmd->result = DID_NO_CONNECT << 16;
+			scmd->scsi_done(scmd);
+			return 0;
+		}
 		return SCSI_MLQUEUE_DEVICE_BUSY;
+	}
 	/* device has been deleted */
 	else if (sas_target_priv_data->deleted) {
 		scmd->result = DID_NO_CONNECT << 16;
