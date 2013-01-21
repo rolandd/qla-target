@@ -62,6 +62,31 @@ int kref_put(struct kref *kref, void (*release)(struct kref *kref))
 	return 0;
 }
 
+/**
+ * kref_put_and_lock - decrement refcount for object.
+ * @kref: object.
+ * @release: pointer to the function that will clean up the object when the
+ *	     last reference to the object is released.
+ *	     This pointer is required, and it is not acceptable to pass kfree
+ *	     in as this function.
+ * @lock: lock to take in release case
+ *
+ * Behaves identical to kref_put with one exception.  If the reference count
+ * drops to zero, the lock will be taken atomically wrt dropping the reference
+ * count.
+ */
+int kref_put_and_lock(struct kref *kref, void (*release) (struct kref *kref),
+		spinlock_t *lock)
+{
+	WARN_ON(release == NULL);
+	WARN_ON(release == (void (*)(struct kref *))kfree);
+
+	if (atomic_dec_and_lock(&kref->refcount, lock)) {
+		release(kref);
+		return 1;
+	}
+	return 0;
+}
 
 /**
  * kref_sub - subtract a number of refcounts for object.
@@ -94,4 +119,5 @@ int kref_sub(struct kref *kref, unsigned int count,
 EXPORT_SYMBOL(kref_init);
 EXPORT_SYMBOL(kref_get);
 EXPORT_SYMBOL(kref_put);
+EXPORT_SYMBOL(kref_put_and_lock);
 EXPORT_SYMBOL(kref_sub);

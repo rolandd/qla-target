@@ -16,6 +16,7 @@
 #define _KREF_H_
 
 #include <linux/types.h>
+#include <linux/spinlock_types.h>
 
 struct kref {
 	atomic_t refcount;
@@ -24,6 +25,8 @@ struct kref {
 void kref_init(struct kref *kref);
 void kref_get(struct kref *kref);
 int kref_put(struct kref *kref, void (*release) (struct kref *kref));
+int kref_put_and_lock(struct kref *kref, void (*release) (struct kref *kref),
+		spinlock_t *lock);
 int kref_sub(struct kref *kref, unsigned int count,
 	     void (*release) (struct kref *kref));
 
