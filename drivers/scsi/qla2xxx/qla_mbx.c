@@ -1949,6 +1949,9 @@ qla24xx_fabric_logout(scsi_qla_host_t *vha, uint16_t loop_id, uint8_t domain,
 	struct req_que *req;
 
 	ql_dbg(ql_dbg_mbx, vha, 0x106d, "Entered %s.\n", __func__);
+	pr_info("%s-%ld: %s<-%pF: logging out loop_id 0x%04x\n",
+		dev_name(&vha->hw->pdev->dev), vha->host_no,
+		__func__, __builtin_return_address(0), loop_id);
 
 	lg = dma_pool_alloc(ha->s_dma_pool, GFP_KERNEL, &lg_dma);
 	if (lg == NULL) {
