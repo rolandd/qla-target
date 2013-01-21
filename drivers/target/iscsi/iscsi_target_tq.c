@@ -235,6 +235,9 @@ static void iscsi_deallocate_extra_thread_sets(void)
 
 void iscsi_activate_thread_set(struct iscsi_conn *conn, struct iscsi_thread_set *ts)
 {
+	pr_info("%s/%d: iSCSI activate thread set %d\n",
+		current->comm, task_pid_nr(current), ts->thread_id);
+
 	iscsi_add_ts_to_active_list(ts);
 
 	spin_lock_bh(&ts->ts_state_lock);
@@ -249,6 +252,9 @@ void iscsi_activate_thread_set(struct iscsi_conn *conn, struct iscsi_thread_set 
 	complete(&ts->rx_start_comp);
 	complete(&ts->deferred_start_comp);
 	wait_for_completion(&ts->rx_post_start_comp);
+
+	pr_info("%s/%d: iSCSI activate thread set %d got past rx_post_start_comp\n",
+		current->comm, task_pid_nr(current), ts->thread_id);
 }
 
 struct iscsi_thread_set *iscsi_get_thread_set(void)
@@ -345,6 +351,10 @@ int iscsi_release_thread_set(struct iscsi_conn *conn)
 	else if (!strncmp(current->comm, ISCSI_TX_THREAD_NAME,
 			strlen(ISCSI_TX_THREAD_NAME)))
 		thread_called = ISCSI_TX_THREAD;
+
+	pr_info("%s/%d: thread set %d release thread set from thread %d\n",
+		current->comm, task_pid_nr(current), ts->thread_id,
+		thread_called);
 
 	if (ts->rx_thread && (thread_called == ISCSI_TX_THREAD) &&
 	   (ts->thread_clear & ISCSI_CLEAR_RX_THREAD)) {
@@ -472,6 +482,8 @@ struct iscsi_conn *iscsi_rx_thread_pre_handler(struct iscsi_thread_set *ts)
 	spin_unlock_bh(&ts->ts_state_lock);
 sleep:
 	ret = wait_for_completion_interruptible(&ts->rx_start_comp);
+	pr_info("%s: %s/%d (thread set %d) got %d waiting for rx_start_comp\n",
+		__func__, current->comm, task_pid_nr(current), ts->thread_id, ret);
 	if (ret != 0)
 		return NULL;
 
@@ -524,6 +536,8 @@ struct iscsi_conn *iscsi_tx_thread_pre_handler(struct iscsi_thread_set *ts)
 	spin_unlock_bh(&ts->ts_state_lock);
 sleep:
 	ret = wait_for_completion_interruptible(&ts->tx_start_comp);
+	pr_info("%s: %s/%d (thread set %d) got %d waiting for tx_start_comp\n",
+		__func__, current->comm, task_pid_nr(current), ts->thread_id, ret);
 	if (ret != 0)
 		return NULL;
 
@@ -585,6 +599,8 @@ struct iscsi_conn *iscsi_deferred_thread_pre_handler(struct iscsi_thread_set *ts
 	spin_unlock_bh(&ts->ts_state_lock);
 sleep:
 	ret = wait_for_completion_interruptible(&ts->deferred_start_comp);
+	pr_info("%s: %s/%d (thread set %d) got %d waiting for deferred_start_comp\n",
+		__func__, current->comm, task_pid_nr(current), ts->thread_id, ret);
 	if (ret != 0)
 		return NULL;
 
