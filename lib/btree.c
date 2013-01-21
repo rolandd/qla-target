@@ -605,6 +605,11 @@ static void *btree_remove_level(struct btree_head *head, struct btree_geo *geo,
 	if ((level == 1) && (keycmp(geo, node, pos, key) != 0))
 		return NULL;
 	ret = bval(geo, node, pos);
+	if (!ret) {
+		BUG_ON(level != 1); /* corrupt internal node? */
+		return NULL;
+	}
+	BUG_ON(fill == 0);
 
 	/* remove and shift */
 	for (i = pos; i < fill - 1; i++) {
