@@ -60,6 +60,14 @@ static unsigned arm_sn_offset = 224;
 module_param(arm_sn_offset, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(arm_sn_offset, "should be offsetof(struct mlx4_cq, arm_sn)");
 
+static unsigned moderation_cq_count;
+module_param(moderation_cq_count, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(moderation_cq_count, "cq_count to pass to ib_modify_cq() for alt-wakeup CQs");
+
+static unsigned moderation_cq_period;
+module_param(moderation_cq_period, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(moderation_cq_period, "cq_period to pass to ib_modify_cq() for alt-wakeup CQs");
+
 static struct lock_class_key pd_lock_key;
 static struct lock_class_key mr_lock_key;
 static struct lock_class_key cq_lock_key;
@@ -868,6 +876,14 @@ ssize_t ib_uverbs_create_cq(struct ib_uverbs_file *file,
 		goto err_file;
 	}
 
+	cq->device        = file->device->ib_dev;
+	cq->uobject       = &obj->uobject;
+	cq->comp_handler  =
+		alt_event ? ib_uverbs_alt_comp_handler : ib_uverbs_comp_handler;
+	cq->event_handler = ib_uverbs_cq_event_handler;
+	cq->cq_context    = ev_file;
+	atomic_set(&cq->usecnt, 0);
+
 	if (alt_event) {
 		unsigned long arm_sn_addr = cmd.user_handle + arm_sn_offset;
 
@@ -883,15 +899,14 @@ ssize_t ib_uverbs_create_cq(struct ib_uverbs_file *file,
 		}
 
 		obj->user_arm_sn = obj->user_cq_map + offset_in_page(arm_sn_addr);
-	}
 
-	cq->device        = file->device->ib_dev;
-	cq->uobject       = &obj->uobject;
-	cq->comp_handler  =
-		alt_event ? ib_uverbs_alt_comp_handler : ib_uverbs_comp_handler;
-	cq->event_handler = ib_uverbs_cq_event_handler;
-	cq->cq_context    = ev_file;
-	atomic_set(&cq->usecnt, 0);
+		if (moderation_cq_count || moderation_cq_period) {
+			ret = ib_modify_cq(cq, moderation_cq_count, moderation_cq_period);
+			if (ret)
+				pr_warning("ib_modify_cq returned %d (cq_count %d / cq_period %d)\n",
+					   ret, moderation_cq_count, moderation_cq_period);
+		}
+	}
 
 	obj->uobject.object = cq;
 	ret = idr_add_uobj(&ib_uverbs_cq_idr, &obj->uobject);
