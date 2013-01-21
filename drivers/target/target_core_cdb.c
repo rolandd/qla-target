@@ -587,6 +587,12 @@ target_emulate_evpd_b2(struct se_cmd *cmd, unsigned char *buf)
 	 */
 	if (dev->se_sub_dev->se_dev_attrib.emulate_tpws != 0)
 		buf[5] |= 0x60;
+
+	/*
+	 * Set the PROVISIONING TYPE field to 2 (== "The logical unit
+	 * is thin provisioned").
+	 */
+	buf[6] = 2;
 }
 
 static void
