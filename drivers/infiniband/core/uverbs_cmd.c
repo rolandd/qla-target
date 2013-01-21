@@ -36,10 +36,26 @@
 #include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/slab.h>
+#include <linux/moduleparam.h>
 
 #include <asm/uaccess.h>
 
 #include "uverbs.h"
+
+/*
+ * This is a bodge on top of the hack that is the whole alternate CQ
+ * notification scheme.  But we need to bump libmlx4's arm_sn, or else
+ * the HW will ignore CQ arm requests after the first one.
+ *
+ * So we make use of the fact that we know cmd.user_handle is actually
+ * a pointer to a struct ibv_cq and in fact a pointer to a struct
+ * mlx4_cq.  We default this to 224, since with the current libmlx4
+ * (after the conversion from pthread_spinlock_t to pthread_mutex_t),
+ * offsetof(struct mlx4_cq, arm_sn) == 224.
+ */
+static unsigned arm_sn_offset = 224;
+module_param(arm_sn_offset, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(arm_sn_offset, "should be offsetof(struct mlx4_cq, arm_sn)");
 
 static struct lock_class_key pd_lock_key;
 static struct lock_class_key mr_lock_key;
@@ -765,6 +781,8 @@ ssize_t ib_uverbs_create_cq(struct ib_uverbs_file *file,
 	struct ib_ucq_object           *obj;
 	struct ib_uverbs_event_file    *ev_file = NULL;
 	struct ib_cq                   *cq;
+	bool				alt_event = false;
+	u16				event_cookie = 0;
 	int                             ret;
 
 	if (out_len < sizeof resp)
@@ -777,12 +795,31 @@ ssize_t ib_uverbs_create_cq(struct ib_uverbs_file *file,
 		   (unsigned long) cmd.response + sizeof resp,
 		   in_len - sizeof cmd, out_len - sizeof resp);
 
-	if (cmd.comp_vector >= file->device->num_comp_vectors)
-		return -EINVAL;
+	/*
+	 * Hacky hook to allow alternative CQ event delivery: if the
+	 * high bit of comp_vector is set, then the next 15 bits are a
+	 * cookie passed to the alternate event function, and the
+	 * actual comp_vector is limited to the low 16 bits.
+	 */
+	alt_event = cmd.comp_vector & (1ul << 31);
+	if (alt_event) {
+		event_cookie = (cmd.comp_vector >> 16) & 0x7fff;
+		cmd.comp_vector = cmd.comp_vector & 0xffff;
+		ret = ib_uverbs_get_alt_comp_handler();
+		if (ret)
+			return ret;
+	}
+
+	if (cmd.comp_vector >= file->device->num_comp_vectors) {
+		ret = -EINVAL;
+		goto err;
+	}
 
 	obj = kmalloc(sizeof *obj, GFP_KERNEL);
-	if (!obj)
-		return -ENOMEM;
+	if (!obj) {
+		ret = -ENOMEM;
+		goto err;
+	}
 
 	init_uobj(&obj->uobject, cmd.user_handle, file->ucontext, &cq_lock_key);
 	down_write(&obj->uobject.mutex);
@@ -791,13 +828,15 @@ ssize_t ib_uverbs_create_cq(struct ib_uverbs_file *file,
 		ev_file = ib_uverbs_lookup_comp_file(cmd.comp_channel);
 		if (!ev_file) {
 			ret = -EINVAL;
-			goto err;
+			goto err_put;
 		}
 	}
 
 	obj->uverbs_file	   = file;
 	obj->comp_events_reported  = 0;
 	obj->async_events_reported = 0;
+	obj->alt_comp_cookie	   = event_cookie;
+	obj->use_alt_comp	   = alt_event;
 	INIT_LIST_HEAD(&obj->comp_list);
 	INIT_LIST_HEAD(&obj->async_list);
 
@@ -809,9 +848,27 @@ ssize_t ib_uverbs_create_cq(struct ib_uverbs_file *file,
 		goto err_file;
 	}
 
+	if (alt_event) {
+		unsigned long arm_sn_addr = cmd.user_handle + arm_sn_offset;
+
+		if (get_user_pages_fast(arm_sn_addr & PAGE_MASK, 1, 1, &obj->user_cq_page) <= 0) {
+			ret = -EFAULT;
+			goto err_free;
+		}
+
+		obj->user_cq_map = vmap(&obj->user_cq_page, 1, VM_MAP, PAGE_KERNEL);
+		if (!obj->user_cq_map) {
+			ret = -EFAULT;
+			goto err_page;
+		}
+
+		obj->user_arm_sn = obj->user_cq_map + offset_in_page(arm_sn_addr);
+	}
+
 	cq->device        = file->device->ib_dev;
 	cq->uobject       = &obj->uobject;
-	cq->comp_handler  = ib_uverbs_comp_handler;
+	cq->comp_handler  =
+		alt_event ? ib_uverbs_alt_comp_handler : ib_uverbs_comp_handler;
 	cq->event_handler = ib_uverbs_cq_event_handler;
 	cq->cq_context    = ev_file;
 	atomic_set(&cq->usecnt, 0);
@@ -819,7 +876,7 @@ ssize_t ib_uverbs_create_cq(struct ib_uverbs_file *file,
 	obj->uobject.object = cq;
 	ret = idr_add_uobj(&ib_uverbs_cq_idr, &obj->uobject);
 	if (ret)
-		goto err_free;
+		goto err_map;
 
 	memset(&resp, 0, sizeof resp);
 	resp.cq_handle = obj->uobject.id;
@@ -844,6 +901,14 @@ ssize_t ib_uverbs_create_cq(struct ib_uverbs_file *file,
 err_copy:
 	idr_remove_uobj(&ib_uverbs_cq_idr, &obj->uobject);
 
+err_map:
+	if (alt_event)
+		vunmap(obj->user_cq_map);
+
+err_page:
+	if (alt_event)
+		put_page(obj->user_cq_page);
+
 err_free:
 	ib_destroy_cq(cq);
 
@@ -851,8 +916,13 @@ err_file:
 	if (ev_file)
 		ib_uverbs_release_ucq(file, ev_file, obj);
 
-err:
+err_put:
 	put_uobj_write(&obj->uobject);
+
+err:
+	if (alt_event)
+		ib_uverbs_put_alt_comp_handler();
+
 	return ret;
 }
 
@@ -1022,6 +1092,12 @@ ssize_t ib_uverbs_destroy_cq(struct ib_uverbs_file *file,
 
 	if (ret)
 		return ret;
+
+	if (obj->use_alt_comp) {
+		vunmap(obj->user_cq_map);
+		put_page(obj->user_cq_page);
+		ib_uverbs_put_alt_comp_handler();
+	}
 
 	idr_remove_uobj(&ib_uverbs_cq_idr, uobj);
 

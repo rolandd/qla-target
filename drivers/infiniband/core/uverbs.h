@@ -128,10 +128,15 @@ struct ib_uqp_object {
 struct ib_ucq_object {
 	struct ib_uobject	uobject;
 	struct ib_uverbs_file  *uverbs_file;
+	struct page	       *user_cq_page;
+	void		       *user_cq_map;
+	int		       *user_arm_sn;
 	struct list_head	comp_list;
 	struct list_head	async_list;
 	u32			comp_events_reported;
 	u32			async_events_reported;
+	u16			alt_comp_cookie;
+	bool			use_alt_comp;
 };
 
 extern spinlock_t ib_uverbs_idr_lock;
@@ -156,11 +161,15 @@ void ib_uverbs_release_uevent(struct ib_uverbs_file *file,
 			      struct ib_uevent_object *uobj);
 
 void ib_uverbs_comp_handler(struct ib_cq *cq, void *cq_context);
+void ib_uverbs_alt_comp_handler(struct ib_cq *cq, void *cq_context);
 void ib_uverbs_cq_event_handler(struct ib_event *event, void *context_ptr);
 void ib_uverbs_qp_event_handler(struct ib_event *event, void *context_ptr);
 void ib_uverbs_srq_event_handler(struct ib_event *event, void *context_ptr);
 void ib_uverbs_event_handler(struct ib_event_handler *handler,
 			     struct ib_event *event);
+
+int ib_uverbs_get_alt_comp_handler(void);
+void ib_uverbs_put_alt_comp_handler(void);
 
 #define IB_UVERBS_DECLARE_CMD(name)					\
 	ssize_t ib_uverbs_##name(struct ib_uverbs_file *file,		\

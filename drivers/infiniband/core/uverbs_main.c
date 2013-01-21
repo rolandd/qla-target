@@ -109,6 +109,9 @@ static ssize_t (*uverbs_cmd_table[])(struct ib_uverbs_file *file,
 	[IB_USER_VERBS_CMD_DESTROY_SRQ]		= ib_uverbs_destroy_srq,
 };
 
+static struct ib_uverbs_alt_comp_handler *alt_comp_handler;
+static DEFINE_SPINLOCK(alt_comp_handler_lock);
+
 static void ib_uverbs_add_one(struct ib_device *device);
 static void ib_uverbs_remove_one(struct ib_device *device);
 
@@ -217,6 +220,8 @@ static int ib_uverbs_cleanup_ucontext(struct ib_uverbs_file *file,
 		idr_remove_uobj(&ib_uverbs_cq_idr, uobj);
 		ib_destroy_cq(cq);
 		ib_uverbs_release_ucq(file, ev_file, ucq);
+		if (ucq->use_alt_comp)
+			ib_uverbs_put_alt_comp_handler();
 		kfree(ucq);
 	}
 
@@ -406,6 +411,17 @@ void ib_uverbs_comp_handler(struct ib_cq *cq, void *cq_context)
 
 	wake_up_interruptible(&file->poll_wait);
 	kill_fasync(&file->async_queue, SIGIO, POLL_IN);
+}
+
+void ib_uverbs_alt_comp_handler(struct ib_cq *cq, void *cq_context)
+{
+	struct ib_ucq_object *uobj =
+		container_of(cq->uobject, struct ib_ucq_object, uobject);
+
+	/* cf ib_uverbs_create_cq() for an explanation of this bodge. */
+	++(*uobj->user_arm_sn);
+
+	alt_comp_handler->handler(cq, cq->uobject->user_handle, uobj->alt_comp_cookie);
 }
 
 static void ib_uverbs_async_handler(struct ib_uverbs_file *file,
@@ -830,6 +846,50 @@ static char *uverbs_devnode(struct device *dev, mode_t *mode)
 		*mode = 0666;
 	return kasprintf(GFP_KERNEL, "infiniband/%s", dev_name(dev));
 }
+
+int ib_uverbs_get_alt_comp_handler(void)
+{
+	int ret = -ENODEV;
+
+	spin_lock(&alt_comp_handler_lock);
+	if (alt_comp_handler && try_module_get(alt_comp_handler->owner))
+		ret = 0;
+	spin_unlock(&alt_comp_handler_lock);
+
+	return ret;
+}
+
+void ib_uverbs_put_alt_comp_handler(void)
+{
+	spin_lock(&alt_comp_handler_lock);
+	if (alt_comp_handler)
+		module_put(alt_comp_handler->owner);
+	spin_unlock(&alt_comp_handler_lock);
+}
+
+int ib_uverbs_register_alt_comp_handler(struct ib_uverbs_alt_comp_handler *alt_handler)
+{
+	int ret = -EBUSY;
+
+	spin_lock(&alt_comp_handler_lock);
+	if (!alt_comp_handler) {
+		alt_comp_handler = alt_handler;
+		ret = 0;
+	}
+	spin_unlock(&alt_comp_handler_lock);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(ib_uverbs_register_alt_comp_handler);
+
+void ib_uverbs_unregister_alt_comp_handler(struct ib_uverbs_alt_comp_handler *alt_handler)
+{
+	spin_lock(&alt_comp_handler_lock);
+	if (alt_comp_handler == alt_handler)
+		alt_comp_handler = NULL;
+	spin_unlock(&alt_comp_handler_lock);
+}
+EXPORT_SYMBOL_GPL(ib_uverbs_unregister_alt_comp_handler);
 
 static int __init ib_uverbs_init(void)
 {

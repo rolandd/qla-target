@@ -851,6 +851,11 @@ struct ib_udata {
 	size_t       outlen;
 };
 
+struct ib_uverbs_alt_comp_handler {
+	struct module	       *owner;
+	void			(*handler)(struct ib_cq *cq, u64 user_context, u16 cookie);
+};
+
 struct ib_pd {
 	struct ib_device       *device;
 	struct ib_uobject      *uobject;
@@ -2058,5 +2063,8 @@ int ib_attach_mcast(struct ib_qp *qp, union ib_gid *gid, u16 lid);
  * @lid: Multicast group LID in host byte order.
  */
 int ib_detach_mcast(struct ib_qp *qp, union ib_gid *gid, u16 lid);
+
+int ib_uverbs_register_alt_comp_handler(struct ib_uverbs_alt_comp_handler *alt_handler);
+void ib_uverbs_unregister_alt_comp_handler(struct ib_uverbs_alt_comp_handler *alt_handler);
 
 #endif /* IB_VERBS_H */
