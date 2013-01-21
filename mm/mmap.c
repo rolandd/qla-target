@@ -1121,6 +1121,15 @@ SYSCALL_DEFINE6(mmap_pgoff, unsigned long, addr, unsigned long, len,
 	struct file *file = NULL;
 	unsigned long retval = -EBADF;
 
+	if ((flags & MAP_HUGETLB) &&
+	    strcmp(current->comm, "platform_framew") &&
+	    strcmp(current->comm, "cached") &&
+	    strcmp(current->comm, "foed")) {
+		printk(KERN_WARNING "WARNING: Ignoring MAP_HUGETLB for non-Purity process %s/%d\n",
+		       current->comm, task_pid_nr(current));
+		flags &= ~MAP_HUGETLB;
+	}
+
 	if (!(flags & MAP_ANONYMOUS)) {
 		audit_mmap_fd(fd, flags);
 		if (unlikely(flags & MAP_HUGETLB))
