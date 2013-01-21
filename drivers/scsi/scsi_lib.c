@@ -2321,12 +2321,20 @@ EXPORT_SYMBOL_GPL(sdev_evt_send_simple);
 int
 scsi_device_quiesce(struct scsi_device *sdev)
 {
+	unsigned long start_time = jiffies;
+	unsigned long next_warning_time = jiffies + msecs_to_jiffies(3000);
 	int err = scsi_device_set_state(sdev, SDEV_QUIESCE);
 	if (err)
 		return err;
 
 	scsi_run_queue(sdev->request_queue);
 	while (sdev->device_busy) {
+		if (time_after(jiffies, next_warning_time)) {
+			sdev_printk(KERN_WARNING, sdev,
+			    "stuck in quiesce for %i ms\n",
+			    jiffies_to_msecs(jiffies - start_time));
+			next_warning_time = jiffies + msecs_to_jiffies(3000);
+		}
 		msleep_interruptible(200);
 		scsi_run_queue(sdev->request_queue);
 	}
