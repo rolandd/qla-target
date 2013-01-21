@@ -3026,6 +3026,7 @@ vmxnet3_probe_device(struct pci_dev *pdev,
 	netdev->watchdog_timeo = 5 * HZ;
 
 	INIT_WORK(&adapter->work, vmxnet3_reset_work);
+	set_bit(VMXNET3_STATE_BIT_QUIESCED, &adapter->state);
 
 	if (adapter->intr.type == VMXNET3_IT_MSIX) {
 		int i;
@@ -3043,15 +3044,14 @@ vmxnet3_probe_device(struct pci_dev *pdev,
 	netif_set_real_num_rx_queues(adapter->netdev, adapter->num_rx_queues);
 
 	SET_NETDEV_DEV(netdev, &pdev->dev);
-	err = register_netdev(netdev);
 
+	err = register_netdev(netdev);
 	if (err) {
 		printk(KERN_ERR "Failed to register adapter %s\n",
 			pci_name(pdev));
 		goto err_register;
 	}
 
-	set_bit(VMXNET3_STATE_BIT_QUIESCED, &adapter->state);
 	vmxnet3_check_link(adapter, false);
 	atomic_inc(&devices_found);
 	return 0;
