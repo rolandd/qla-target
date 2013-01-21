@@ -143,7 +143,7 @@ static struct se_device *iblock_create_virtdevice(
 			ib_dev->ibd_udev_path);
 
 	bd = blkdev_get_by_path(ib_dev->ibd_udev_path,
-				FMODE_WRITE|FMODE_READ|FMODE_EXCL, ib_dev);
+				FMODE_WRITE|FMODE_READ, ib_dev);
 	if (IS_ERR(bd)) {
 		ret = PTR_ERR(bd);
 		goto failed;
@@ -208,7 +208,7 @@ static void iblock_free_device(void *p)
 	struct iblock_dev *ib_dev = p;
 
 	if (ib_dev->ibd_bd != NULL)
-		blkdev_put(ib_dev->ibd_bd, FMODE_WRITE|FMODE_READ|FMODE_EXCL);
+		blkdev_put(ib_dev->ibd_bd, FMODE_WRITE|FMODE_READ);
 	if (ib_dev->ibd_bio_set != NULL)
 		bioset_free(ib_dev->ibd_bio_set);
 	kfree(ib_dev);
