@@ -53,6 +53,15 @@
 #define IBLOCK_MAX_BIO_PER_TASK	 32	/* max # of bios to submit at a time */
 #define IBLOCK_BIO_POOL_SIZE	128
 
+static char pure_product_id[17] = PURE_PRODUCT_ID;
+static char pure_revision[5]    = PURE_REVISION;
+
+module_param_string(pure_pid, pure_product_id, sizeof(pure_product_id), 0644);
+MODULE_PARM_DESC(pure_pid, "PURE Product identification");
+
+module_param_string(pure_rev, pure_revision, sizeof(pure_revision), 0644);
+MODULE_PARM_DESC(pure_rev, "PURE Product revision");
+
 static struct se_subsystem_api iblock_template;
 
 static void iblock_bio_done(struct bio *, int);
@@ -144,7 +153,7 @@ static struct se_device *iblock_create_virtdevice(
 
 	dev = transport_add_device_to_core_hba(hba,
 			&iblock_template, se_dev, dev_flags, ib_dev,
-			&dev_limits, PURE_PRODUCT_ID, PURE_REVISION);
+			&dev_limits, pure_product_id, pure_revision);
 	if (!dev)
 		goto failed;
 
