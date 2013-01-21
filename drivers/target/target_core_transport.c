@@ -1389,7 +1389,7 @@ struct se_device *transport_add_device_to_core_hba(
 			goto out;
 		}
 
-		strncpy(&dev->se_sub_dev->t10_wwn.vendor[0], "LIO-ORG", 8);
+		strncpy(&dev->se_sub_dev->t10_wwn.vendor[0], PURE_VENDOR_ID, 8);
 		strncpy(&dev->se_sub_dev->t10_wwn.model[0], inquiry_prod, 16);
 		strncpy(&dev->se_sub_dev->t10_wwn.revision[0], inquiry_rev, 4);
 	}

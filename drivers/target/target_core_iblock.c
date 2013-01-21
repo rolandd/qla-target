@@ -164,7 +164,7 @@ static struct se_device *iblock_create_virtdevice(
 
 	dev = transport_add_device_to_core_hba(hba,
 			&iblock_template, se_dev, dev_flags, ib_dev,
-			&dev_limits, "IBLOCK", IBLOCK_VERSION);
+			&dev_limits, PURE_PRODUCT_ID, PURE_REVISION);
 	if (!dev)
 		goto failed;
 

@@ -239,17 +239,12 @@ static struct se_device *rd_create_virtdevice(
 	struct rd_dev *rd_dev = p;
 	struct rd_host *rd_host = hba->hba_ptr;
 	int dev_flags = 0, ret;
-	char prod[16], rev[4];
 
 	memset(&dev_limits, 0, sizeof(struct se_dev_limits));
 
 	ret = rd_build_device_space(rd_dev);
 	if (ret < 0)
 		goto fail;
-
-	snprintf(prod, 16, "RAMDISK-%s", (rd_dev->rd_direct) ? "DR" : "MCP");
-	snprintf(rev, 4, "%s", (rd_dev->rd_direct) ? RD_DR_VERSION :
-						RD_MCP_VERSION);
 
 	dev_limits.limits.logical_block_size = RD_BLOCKSIZE;
 	dev_limits.limits.max_hw_sectors = RD_MAX_SECTORS;
@@ -259,7 +254,7 @@ static struct se_device *rd_create_virtdevice(
 
 	dev = transport_add_device_to_core_hba(hba,
 			&rd_mcp_template, se_dev, dev_flags, rd_dev,
-			&dev_limits, prod, rev);
+			&dev_limits, PURE_PRODUCT_ID, PURE_REVISION);
 	if (!dev)
 		goto fail;
 

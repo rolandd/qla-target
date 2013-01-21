@@ -954,4 +954,9 @@ struct se_wwn {
 	struct config_group	fabric_stat_group;
 };
 
+#define PURE_VENDOR_ID	"PURE    "
+#define PURE_PRODUCT_ID	"FlashArray      "
+#define PURE_REVISION	"100 "
+#define PURE_OUI        0x24A937
+
 #endif /* TARGET_CORE_BASE_H */

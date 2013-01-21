@@ -128,9 +128,9 @@ target_emulate_inquiry_std(struct se_cmd *cmd)
 		goto out;
 	}
 
-	snprintf(&buf[8], 8, "LIO-ORG");
-	snprintf(&buf[16], 16, "%s", dev->se_sub_dev->t10_wwn.model);
-	snprintf(&buf[32], 4, "%s", dev->se_sub_dev->t10_wwn.revision);
+	strncpy(&buf[8], PURE_VENDOR_ID, 8);
+	strncpy(&buf[16], dev->se_sub_dev->t10_wwn.model, 16);
+	strncpy(&buf[32], dev->se_sub_dev->t10_wwn.revision, 4);
 	buf[4] = 31; /* Set additional length to 31 */
 
 out:
@@ -171,7 +171,8 @@ target_parse_naa_6h_vendor_specific(struct se_device *dev, unsigned char *buf)
 {
 	unsigned char *p = &dev->se_sub_dev->t10_wwn.unit_serial[0];
 	int cnt;
-	bool next = true;
+	/* Skip MSB nibble, our serial numbers are 24 bytes */
+	bool next = false;
 
 	/*
 	 * Generate up to 36 bits of VENDOR SPECIFIC IDENTIFIER starting on
@@ -180,6 +181,7 @@ target_parse_naa_6h_vendor_specific(struct se_device *dev, unsigned char *buf)
 	 * to complete the payload.  These are based from VPD=0x80 PRODUCT SERIAL
 	 * NUMBER set via vpd_unit_serial in target_core_configfs.c to ensure
 	 * per device uniqeness.
+	 *
 	 */
 	for (cnt = 0; *p && cnt < 13; p++) {
 		int val = hex_to_bin(*p);
@@ -248,14 +250,15 @@ target_emulate_evpd_83(struct se_cmd *cmd, unsigned char *buf)
 	/*
 	 * Start NAA IEEE Registered Extended Identifier/Designator
 	 */
-	buf[off++] = (0x6 << 4);
+	buf[off] = (0x6 << 4);
 
 	/*
-	 * Use OpenFabrics IEEE Company ID: 00 14 05
+	 * Use PURE OUI: 24A937
 	 */
-	buf[off++] = 0x01;
-	buf[off++] = 0x40;
-	buf[off] = (0x5 << 4);
+	buf[off++] |= (PURE_OUI >> 20) & 0x0f;
+	buf[off++]  = (PURE_OUI >> 12) & 0xff;
+	buf[off++]  = (PURE_OUI >> 4 ) & 0xff;
+	buf[off++]  = (PURE_OUI << 4)  & 0xff;
 
 	/*
 	 * Return ConfigFS Unit Serial Number information for
@@ -272,32 +275,33 @@ check_t10_vend_desc:
 	 * T10 Vendor Identifier Page, see spc4r17 section 7.7.3.4
 	 */
 	id_len = 8; /* For Vendor field */
-	prod_len = 4; /* For VPD Header */
-	prod_len += 8; /* For Vendor field */
-	prod_len += strlen(prod);
-	prod_len++; /* For : */
+	for (prod_len = 16; prod_len > 0 && prod[prod_len - 1] == ' '; --prod_len)
+		; /* nothing */
 
 	if (dev->se_sub_dev->su_dev_flags &
 			SDF_EMULATED_VPD_UNIT_SERIAL) {
 		unit_serial_len =
 			strlen(&dev->se_sub_dev->t10_wwn.unit_serial[0]);
-		unit_serial_len++; /* For NULL Terminator */
 
 		if ((len + (id_len + 4) +
+		     8 +	/* For Vendor field */
+		     1 +	/* for ':' */
 		    (prod_len + unit_serial_len)) >
 				cmd->data_length) {
 			len += (prod_len + unit_serial_len);
 			goto check_port;
 		}
-		id_len += sprintf(&buf[off+12], "%s:%s", prod,
-				&dev->se_sub_dev->t10_wwn.unit_serial[0]);
+		memcpy(&buf[off+12], prod, prod_len);
+		id_len += prod_len;
+		buf[off+12+prod_len] = ':';
+		id_len++;
+		memcpy(&buf[off+12+prod_len+1], dev->se_sub_dev->t10_wwn.unit_serial, unit_serial_len);
+		id_len += unit_serial_len;
 	}
 	buf[off] = 0x2; /* ASCII */
 	buf[off+1] = 0x1; /* T10 Vendor ID */
 	buf[off+2] = 0x0;
-	memcpy(&buf[off+4], "LIO-ORG", 8);
-	/* Extra Byte for NULL Terminator */
-	id_len++;
+	memcpy(&buf[off+4], PURE_VENDOR_ID, 8);
 	/* Identifier Length */
 	buf[off+3] = id_len;
 	/* Header size for Designation descriptor */
