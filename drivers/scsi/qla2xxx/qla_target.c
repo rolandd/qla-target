@@ -523,6 +523,7 @@ static bool qla_tgt_check_fcport_exist(struct scsi_qla_host *vha, struct qla_tgt
 	int pmap_len;
 	fc_port_t *fcport;
 	int global_resets;
+	unsigned long flags;
 
 retry:
 	global_resets = atomic_read(&ha->qla_tgt->tgt_global_resets_count);
@@ -593,9 +594,10 @@ retry:
 		sess->s_id.b.area, sess->loop_id, fcport->d_id.b.domain,
 		fcport->d_id.b.al_pa, fcport->d_id.b.area, fcport->loop_id);
 
-	sess->s_id = fcport->d_id;
-	sess->loop_id = fcport->loop_id;
-	sess->conf_compl_supported = fcport->conf_compl_supported;
+	spin_lock_irqsave(&ha->hardware_lock, flags);
+	ha->tgt_ops->update_sess(sess, fcport->d_id, fcport->loop_id,
+				 fcport->conf_compl_supported);
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
 	res = true;
 
@@ -703,9 +705,9 @@ static struct qla_tgt_sess *qla_tgt_create_sess(
 			qla_tgt_undelete_sess(sess);
 
 		kref_get(&sess->se_sess->sess_kref);
-		sess->s_id = fcport->d_id;
-		sess->loop_id = fcport->loop_id;
-		sess->conf_compl_supported = fcport->conf_compl_supported;
+		ha->tgt_ops->update_sess(sess, fcport->d_id, fcport->loop_id,
+					 fcport->conf_compl_supported);
+
 		if (sess->local && !local)
 			sess->local = 0;
 		spin_unlock_irqrestore(&ha->hardware_lock, flags);
@@ -825,9 +827,8 @@ void qla_tgt_fc_port_added(struct scsi_qla_host *vha, fc_port_t *fcport)
 
 			ql_dbg(ql_dbg_tgt_mgt, vha, 0xe10a, "Reappeared sess %p\n", sess);
 		}
-		sess->s_id = fcport->d_id;
-		sess->loop_id = fcport->loop_id;
-		sess->conf_compl_supported = fcport->conf_compl_supported;
+		ha->tgt_ops->update_sess(sess, fcport->d_id, fcport->loop_id,
+					 fcport->conf_compl_supported);
 	}
 
 	if (sess && sess->local) {
