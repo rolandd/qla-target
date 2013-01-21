@@ -1798,9 +1798,9 @@ __releases(&gcwq->lock)
 __acquires(&gcwq->lock)
 {
 	struct cpu_workqueue_struct *cwq = get_work_cwq(work);
-	struct global_cwq *gcwq = cwq->gcwq;
-	struct hlist_head *bwh = busy_worker_head(gcwq, work);
-	bool cpu_intensive = cwq->wq->flags & WQ_CPU_INTENSIVE;
+	struct global_cwq *gcwq;
+	struct hlist_head *bwh;
+	bool cpu_intensive;
 	work_func_t f = work->func;
 	int work_color;
 	struct worker *collision;
@@ -1814,6 +1814,25 @@ __acquires(&gcwq->lock)
 	 */
 	struct lockdep_map lockdep_map = work->lockdep_map;
 #endif
+	WARN(!cwq, "NULL cwq, work %p work->data 0x%016lx work->func %p / %pF\n",
+	     work, atomic_long_read(&work->data), work->func, work->func);
+	if (!cwq) {
+		pr_info("struct page:\n");
+		print_hex_dump_bytes("", DUMP_PREFIX_OFFSET,
+				virt_to_head_page(work), sizeof(struct page));
+		pr_info("struct kmem_cache:\n");
+		print_hex_dump_bytes("", DUMP_PREFIX_ADDRESS,
+				virt_to_head_page(work)->slab,
+				sizeof(struct kmem_cache));
+		pr_info("page:\n");
+		print_hex_dump_bytes("", DUMP_PREFIX_OFFSET,
+				     (void *) work - offset_in_page(work), PAGE_SIZE);
+	}
+
+	gcwq = cwq->gcwq;
+	bwh = busy_worker_head(gcwq, work);
+	cpu_intensive = cwq->wq->flags & WQ_CPU_INTENSIVE;
+
 	/*
 	 * A single work shouldn't be executed concurrently by
 	 * multiple workers on a single cpu.  Check whether anyone is

@@ -411,6 +411,11 @@ static void tcm_qla2xxx_complete_free(struct work_struct *work)
  */
 static void tcm_qla2xxx_free_cmd(struct qla_tgt_cmd *cmd)
 {
+	WARN_ON(work_pending(&cmd->free_work));
+	/* It's also a problem if the work for the command we're
+	 * freeing is still pending... */
+	WARN_ON(work_pending(&cmd->work));
+	WARN_ON(work_pending(&cmd->se_cmd.work));
 	INIT_WORK(&cmd->free_work, tcm_qla2xxx_complete_free);
 	queue_work(tcm_qla2xxx_free_wq, &cmd->free_work);
 }

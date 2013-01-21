@@ -361,6 +361,7 @@ void qla_tgt_unreg_sess(struct qla_tgt_sess *sess)
 	if (sess->deleted)
 		list_del(&sess->del_list_entry);
 
+	WARN_ON(work_pending(&sess->free_work));
 	INIT_WORK(&sess->free_work, qla_tgt_free_session_done);
 	schedule_work(&sess->free_work);
 }
@@ -2638,6 +2639,7 @@ static int qla_tgt_handle_cmd_for_atio(struct scsi_qla_host *vha,
 	cmd->tgt = ha->qla_tgt;
 	cmd->vha = vha;
 
+	WARN_ON(work_pending(&cmd->work));
 	INIT_WORK(&cmd->work, qla_tgt_do_work);
 	queue_work(qla_tgt_wq, &cmd->work);
 	return 0;

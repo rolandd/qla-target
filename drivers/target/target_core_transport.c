@@ -783,8 +783,26 @@ void transport_complete_task(struct se_task *task, int success)
 		return;
 	} else if (cmd->transport_state & CMD_T_FAILED) {
 		cmd->scsi_sense_reason = TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;
+		if (work_pending(&cmd->work)) {
+			pr_alert("cmd->work pending (func %pF, transport_state 0x%x)\n",
+				cmd->work.func, cmd->transport_state);
+			print_hex_dump_bytes("", DUMP_PREFIX_OFFSET,
+					cmd, sizeof(*cmd));
+			print_hex_dump_bytes("", DUMP_PREFIX_ADDRESS,
+					(void *)cmd - offset_in_page(cmd),
+					PAGE_SIZE);
+		}
 		INIT_WORK(&cmd->work, target_complete_failure_work);
 	} else {
+		if (work_pending(&cmd->work)) {
+			pr_alert("cmd->work pending (func %pF, transport_state 0x%x)\n",
+				cmd->work.func, cmd->transport_state);
+			print_hex_dump_bytes("", DUMP_PREFIX_OFFSET,
+					cmd, sizeof(*cmd));
+			print_hex_dump_bytes("", DUMP_PREFIX_ADDRESS,
+					(void *)cmd - offset_in_page(cmd),
+					PAGE_SIZE);
+		}
 		INIT_WORK(&cmd->work, target_complete_ok_work);
 	}
 
@@ -1426,6 +1444,7 @@ struct se_device *transport_add_device_to_core_hba(
 	/*
 	 * Setup work_queue for QUEUE_FULL
 	 */
+	WARN_ON(work_pending(&dev->qf_work_queue));
 	INIT_WORK(&dev->qf_work_queue, target_qf_do_work);
 	/*
 	 * Preload the initial INQUIRY const values if we are doing
@@ -4031,6 +4050,7 @@ int transport_generic_new_cmd(struct se_cmd *cmd)
 					&ua_asc, &ua_ascq);
 		}
 
+		WARN_ON(work_pending(&cmd->work));
 		INIT_WORK(&cmd->work, target_complete_ok_work);
 		queue_work(target_completion_wq, &cmd->work);
 		return 0;
