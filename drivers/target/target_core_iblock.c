@@ -365,6 +365,7 @@ static struct ps_ioreq * iblock_ps_alloc(struct request_queue *q,
 	if (cmd->alloc_cmd_mem_flags & CMD_A_FAIL_WHEN_EMPTY)
 		opcode |= PS_IO_FLAG_NOWAIT;
 
+	cmd->free_buf = q->free_ps_buf_fn;
 	iop = q->alloc_ps_buf_fn(q, size, opcode, &cmd->t_data_sg,
 				 &cmd->t_data_nents, &nexus, endio,
 				 endio_priv);
@@ -416,10 +417,11 @@ static int iblock_alloc_cmd_mem(struct se_cmd *cmd)
 
 static void iblock_free_cmd_mem(struct se_cmd *cmd)
 {
-	struct iblock_dev *ib_dev = cmd->se_dev->dev_ptr;
-	struct request_queue *q = bdev_get_queue(ib_dev->ibd_bd);
+	if (cmd->free_buf)
+		cmd->free_buf(cmd->ps_iop);
+	else
+		WARN_ON_ONCE(cmd->ps_iop);
 
-	q->free_ps_buf_fn(cmd->ps_iop);
 	cmd->ps_iop = NULL;
 }
 

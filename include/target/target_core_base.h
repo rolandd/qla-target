@@ -525,6 +525,7 @@ struct se_tmr_req {
 };
 
 struct se_cmd {
+	free_ps_buf_fn		*free_buf;
 	unsigned int original_cpu; /* which cpu did this command arrive on? */
 	/* SAM response code being sent to initiator */
 	u8			scsi_status;
