@@ -574,9 +574,12 @@ target_emulate_evpd_b2(struct se_cmd *cmd, unsigned char *buf)
 	 * A TPU bit set to one indicates that the device server supports
 	 * the UNMAP command (see 5.25). A TPU bit set to zero indicates
 	 * that the device server does not support the UNMAP command.
+	 *
+	 * If we set this, we also set LBPRZ because reading unmapped
+	 * LBAs returns 0s.
 	 */
 	if (dev->se_sub_dev->se_dev_attrib.emulate_tpu != 0)
-		buf[5] = 0x80;
+		buf[5] = 0x84;
 
 	/*
 	 * A TPWS bit set to one indicates that the device server supports
@@ -584,9 +587,12 @@ target_emulate_evpd_b2(struct se_cmd *cmd, unsigned char *buf)
 	 * A TPWS bit set to zero indicates that the device server does not
 	 * support the use of the WRITE SAME (16) command to unmap
 	 * LBAs.  And similarly for TPWS10.
+	 *
+	 * If we set this, we also set LBPRZ because reading unmapped
+	 * LBAs returns 0s.
 	 */
 	if (dev->se_sub_dev->se_dev_attrib.emulate_tpws != 0)
-		buf[5] |= 0x60;
+		buf[5] |= 0x64;
 
 	/*
 	 * Set the PROVISIONING TYPE field to 2 (== "The logical unit
@@ -767,10 +773,13 @@ int target_emulate_readcapacity_16(struct se_task *task)
 	buf[11] = dev->se_sub_dev->se_dev_attrib.block_size & 0xff;
 	/*
 	 * Set Thin Provisioning Enable bit following sbc3r22 in section
-	 * READ CAPACITY (16) byte 14 if emulate_tpu or emulate_tpws is enabled.
+	 * READ CAPACITY (16) byte 14 if emulate_tpu or emulate_tpws
+	 * is enabled.
+	 *
+	 * We also set LBPRZ because reading unmapped LBAs returns 0s.
 	 */
 	if (dev->se_sub_dev->se_dev_attrib.emulate_tpu || dev->se_sub_dev->se_dev_attrib.emulate_tpws)
-		buf[14] = 0x80;
+		buf[14] = 0xC0;
 
 	transport_kunmap_data_sg(cmd);
 
