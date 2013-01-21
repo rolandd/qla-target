@@ -355,7 +355,6 @@ void qla_tgt_unreg_sess(struct qla_tgt_sess *sess)
 	struct scsi_qla_host *vha = sess->vha;
 
 	assert_spin_locked(&vha->hw->hardware_lock);
-	vha->hw->tgt_ops->clear_nacl_from_fcport_map(sess);
 
 	list_del(&sess->sess_list_entry);
 	if (sess->deleted)

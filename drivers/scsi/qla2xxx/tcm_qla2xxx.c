@@ -931,11 +931,14 @@ static void tcm_qla2xxx_clear_nacl_from_fcport_map(struct qla_tgt_sess *sess)
 			       nacl->nport_id);
 }
 
+static void tcm_qla2xxx_unset_sess(struct se_session *se_sess);
+
 static void tcm_qla2xxx_release_session(struct kref *kref)
 {
 	struct se_session *se_sess = container_of(kref,
 			struct se_session, sess_kref);
 
+	tcm_qla2xxx_unset_sess(se_sess);
 	qla_tgt_unreg_sess(se_sess->fabric_sess_ptr);
 }
 
@@ -1537,49 +1540,40 @@ static void tcm_qla2xxx_free_session(struct qla_tgt_sess *sess)
 {
 	struct qla_tgt *tgt = sess->tgt;
 	struct qla_hw_data *ha = tgt->ha;
-	struct se_session *se_sess;
-	struct se_node_acl *se_nacl;
-	struct tcm_qla2xxx_lport *lport;
-	struct tcm_qla2xxx_nacl *nacl;
-	unsigned char be_sid[3];
-	unsigned long flags;
+	struct se_session *se_sess = sess->se_sess;
 
 	BUG_ON(in_interrupt());
+	BUG_ON(!ha->target_lport_ptr);
+	BUG_ON(!se_sess);
 
-	se_sess = sess->se_sess;
-	if (!se_sess) {
-		pr_err("struct qla_tgt_sess->se_sess is NULL\n");
-		dump_stack();
-		return;
-	}
-	se_nacl = se_sess->se_node_acl;
-        nacl = container_of(se_nacl, struct tcm_qla2xxx_nacl, se_node_acl);
+	target_wait_for_sess_cmds(se_sess, 0);
+
+	transport_deregister_session_configfs(sess->se_sess);
+	transport_deregister_session(sess->se_sess);
+}
+
+static void tcm_qla2xxx_unset_sess(struct se_session *se_sess)
+{
+	struct qla_tgt_sess *sess = se_sess->fabric_sess_ptr;
+	struct qla_tgt *tgt = sess->tgt;
+	struct qla_hw_data *ha = tgt->ha;
+	struct tcm_qla2xxx_lport *lport;
+	struct se_node_acl *se_nacl;
+	struct tcm_qla2xxx_nacl *nacl;
+	unsigned char be_sid[3];
 
 	lport = ha->target_lport_ptr;
-	if (!lport) {
-		pr_err("Unable to locate struct tcm_qla2xxx_lport\n");
-		dump_stack();
-		return;
-	}
-	target_wait_for_sess_cmds(se_sess, 0);
-        /*
-         * And now clear the se_nacl and session pointers from our HW lport
-         * mappings for fabric S_ID and LOOP_ID.
-         */
+	se_nacl = se_sess->se_node_acl;
+	nacl = container_of(se_nacl, struct tcm_qla2xxx_nacl, se_node_acl);
 	memset(&be_sid, 0, 3);
 	be_sid[0] = sess->s_id.b.domain;
 	be_sid[1] = sess->s_id.b.area;
 	be_sid[2] = sess->s_id.b.al_pa;
 
-	spin_lock_irqsave(&ha->hardware_lock, flags);
 	tcm_qla2xxx_set_sess_by_s_id(lport, NULL, nacl, se_sess,
 			sess, be_sid);
 	tcm_qla2xxx_set_sess_by_loop_id(lport, NULL, nacl, se_sess,
 			sess, sess->loop_id);
-	spin_unlock_irqrestore(&ha->hardware_lock, flags);
-
-	transport_deregister_session_configfs(sess->se_sess);
-	transport_deregister_session(sess->se_sess);
 }
 
 /*
