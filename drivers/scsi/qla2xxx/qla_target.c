@@ -789,7 +789,6 @@ void qla_tgt_fc_port_added(struct scsi_qla_host *vha, fc_port_t *fcport)
 	struct qla_tgt *tgt = ha->qla_tgt;
 	struct qla_tgt_sess *sess;
 	unsigned long flags;
-	unsigned char s_id[3];
 
 	if (!vha->hw->tgt_ops)
 		return;
@@ -805,11 +804,6 @@ void qla_tgt_fc_port_added(struct scsi_qla_host *vha, fc_port_t *fcport)
 	sess = qla_tgt_find_sess_by_port_name(tgt, fcport->port_name);
 	if (!sess) {
 		spin_unlock_irqrestore(&ha->hardware_lock, flags);
-
-		memset(&s_id, 0, 3);
-		s_id[0] = fcport->d_id.b.domain;
-		s_id[1] = fcport->d_id.b.area;
-		s_id[2] = fcport->d_id.b.al_pa;
 
 		mutex_lock(&ha->tgt_mutex);
 		sess = qla_tgt_create_sess(vha, fcport, false);
