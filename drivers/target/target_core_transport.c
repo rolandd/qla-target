@@ -5032,12 +5032,19 @@ get_cmd:
 			__transport_execute_tasks(dev, NULL);
 			break;
 		default:
-			pr_err("Unknown t_state: %d  for ITT: 0x%08x "
-				"i_state: %d on SE LUN: %u\n",
-				cmd->t_state,
-				cmd->se_tfo->get_task_tag(cmd),
-				cmd->se_tfo->get_cmd_state(cmd),
-				cmd->se_lun->unpacked_lun);
+			pr_err("cmd %p: unknown t_state %d (transport_state %d) ",
+			       cmd, cmd->t_state, cmd->transport_state);
+			if (cmd->se_tfo)
+				pr_cont("ITT 0x%08x i_state %d ",
+					cmd->se_tfo->get_task_tag(cmd),
+					cmd->se_tfo->get_cmd_state(cmd));
+			else
+				pr_cont("se_tfo NULL! ");
+			if (cmd->se_lun)
+				pr_cont("SE LUN %u\n", cmd->se_lun->unpacked_lun);
+			else
+				pr_cont("se_lun NULL!\n");
+
 			BUG();
 		}
 
