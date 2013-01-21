@@ -506,7 +506,7 @@ static int core_scsi3_pr_seq_non_holder(
 			/*
 			 * Conflict for write exclusive
 			 */
-			pr_debug("%s Conflict for unregistered nexus"
+			pr_info("%s Conflict for unregistered nexus"
 				" %s CDB: 0x%02x to %s reservation\n",
 				transport_dump_cmd_direction(cmd),
 				se_sess->se_node_acl->initiatorname, cdb[0],
@@ -546,7 +546,7 @@ static int core_scsi3_pr_seq_non_holder(
 			return 0;
 		}
 	}
-	pr_debug("%s Conflict for %sregistered nexus %s CDB: 0x%2x"
+	pr_info("%s Conflict for %sregistered nexus %s CDB: 0x%2x"
 		" for %s reservation\n", transport_dump_cmd_direction(cmd),
 		(registered_nexus) ? "" : "un",
 		se_sess->se_node_acl->initiatorname, cdb[0],
