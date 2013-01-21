@@ -1,0 +1,61 @@
+
+started by Jörn Engel <joern@logfs.org> 2012.03.17
+
+Introduction:
+=============
+
+This module logs kernel printk messages to block devices, e.g. usb
+sticks.  It allows after-the-fact debugging when the main
+disk/filesystem fails and serial consoles and netconsole are
+impractical.
+
+It can currently only be used built-in.  Blockconsole hooks into the
+partition scanning code and will bring up configured block devices as
+soon as possible.  While this doesn't allow capture of early kernel
+panics, it does capture most of the boot process.
+
+Block device configuration:
+==================================
+
+Blockconsole has no configuration parameter.  In order to use a block
+device for logging, the blockconsole header has to be written to the
+device in questions.  Logging to partitions is not supported.
+
+Example:
+  echo "Linux blockconsole version 1.0" > /dev/sdc
+
+If the string "Linux blockconsole version 1.0" is present at the
+beginning of the device, this device will be used by blockconsole upon
+next boot.  It is possible but not required to add an additional
+character before the string.  Usually that would be a newline.
+
+Miscellaneous notes:
+====================
+
+Once every megabyte blockconsole will write a copy of its header to
+the device.  This header consists of a newline, the string "Linux
+blockconsole version 1.0", a 64bit big-endian sequence number, plus
+another eight newlines for a total of 48 bytes.  This means that log
+messages can be interrupted by the header in mid-line and continue
+after the header.
+
+The 64bit big-endian sequence number is used by blockconsole to
+determine where to continue logging after a reboot.  New logs will be
+written to the first megabytes that wasn't written to by the last
+instance of blockconsole.  Therefore users might want to read the log
+device in a hex editor and look for the place where the header
+sequence number changes.  This marks the end of the log, or at least
+it marks a location less than one megabyte from the end of the log.
+
+The blockconsole header is constructed such that opening the log
+device in a text editor, ignoring memory constraints due to large
+devices, should just work and be reasonably non-confusing to readers.
+
+Writing to the log device is strictly circular.  This should give
+optimal performance and reliability on cheap devices, like usb sticks.
+
+Writing to block devices has to happen in sector granularity, while
+kernel logging happens in byte granularity.  In order not to lose
+messages in important cases like kernel crashes, a timer will write
+out partial sectors if no new messages appear for a while.  The
+unwritten part of the sector will be filled with newlines.
