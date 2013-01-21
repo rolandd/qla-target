@@ -121,14 +121,7 @@ static struct qla_tgt_sess *qla_tgt_find_sess_by_port_name(
 	struct qla_tgt_sess *sess;
 
 	list_for_each_entry(sess, &tgt->sess_list, sess_list_entry) {
-		if ((sess->port_name[0] == port_name[0]) &&
-		    (sess->port_name[1] == port_name[1]) &&
-		    (sess->port_name[2] == port_name[2]) &&
-		    (sess->port_name[3] == port_name[3]) &&
-		    (sess->port_name[4] == port_name[4]) &&
-		    (sess->port_name[5] == port_name[5]) &&
-		    (sess->port_name[6] == port_name[6]) &&
-		    (sess->port_name[7] == port_name[7]))
+		if (memcmp(sess->port_name, port_name, WWN_SIZE) == 0)
 			return sess;
 	}
 
