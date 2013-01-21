@@ -78,13 +78,12 @@ int vm_highmem_is_dirtyable;
 /*
  * The generator of dirty data starts writeback at this percentage
  */
-int vm_dirty_ratio = 20;
+int vm_dirty_ratio;
 
 /*
- * vm_dirty_bytes starts at 0 (disabled) so that it is a function of
- * vm_dirty_ratio * the amount of dirtyable memory
+ * Overrides vm_dirty_ratio, start in-process writeback at 500MiB
  */
-unsigned long vm_dirty_bytes;
+unsigned long vm_dirty_bytes = 500UL << 20;
 
 /*
  * The interval between `kupdate'-style writebacks
