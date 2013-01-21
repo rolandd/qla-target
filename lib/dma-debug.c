@@ -382,8 +382,8 @@ static struct dma_debug_entry *dma_entry_alloc(void)
 	spin_lock_irqsave(&free_entries_lock, flags);
 
 	if (list_empty(&free_entries)) {
-		pr_err("DMA-API: debugging out of memory - disabling\n");
 		global_disable = true;
+		pr_err("DMA-API: debugging out of memory - disabling\n");
 		goto out;
 	}
 
