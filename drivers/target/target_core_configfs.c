@@ -473,10 +473,6 @@ static int target_fabric_tf_ops_check(
 		pr_err("Missing tfo->set_fabric_sense_len()\n");
 		return -EINVAL;
 	}
-	if (!tfo->get_fabric_sense_len) {
-		pr_err("Missing tfo->get_fabric_sense_len()\n");
-		return -EINVAL;
-	}
 	if (!tfo->is_state_remove) {
 		pr_err("Missing tfo->is_state_remove()\n");
 		return -EINVAL;

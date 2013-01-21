@@ -3571,11 +3571,6 @@ static u16 srpt_set_fabric_sense_len(struct se_cmd *cmd, u32 sense_length)
 	return 0;
 }
 
-static u16 srpt_get_fabric_sense_len(void)
-{
-	return 0;
-}
-
 static int srpt_is_state_remove(struct se_cmd *se_cmd)
 {
 	return 0;
@@ -3963,7 +3958,6 @@ static struct target_core_fabric_ops srpt_template = {
 	.queue_data_in			= srpt_queue_response,
 	.queue_status			= srpt_queue_status,
 	.queue_tm_rsp			= srpt_queue_response,
-	.get_fabric_sense_len		= srpt_get_fabric_sense_len,
 	.set_fabric_sense_len		= srpt_set_fabric_sense_len,
 	.is_state_remove		= srpt_is_state_remove,
 	/*
