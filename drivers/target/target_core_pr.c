@@ -4003,7 +4003,7 @@ static int core_scsi3_pri_read_keys(struct se_cmd *cmd)
 
 	transport_kunmap_data_sg(cmd);
 
-	return 0;
+	return add_len + 8;
 }
 
 /*
@@ -4018,7 +4018,7 @@ static int core_scsi3_pri_read_reservation(struct se_cmd *cmd)
 	struct t10_pr_registration *pr_reg;
 	unsigned char *buf;
 	u64 pr_res_key;
-	u32 add_len = 16; /* Hardcoded to 16 when a reservation is held. */
+	u32 add_len = 0;
 
 	if (cmd->data_length < 8) {
 		pr_err("PRIN SA READ_RESERVATIONS SCSI Data Length: %u"
@@ -4036,6 +4036,7 @@ static int core_scsi3_pri_read_reservation(struct se_cmd *cmd)
 	spin_lock(&se_dev->dev_reservation_lock);
 	pr_reg = se_dev->dev_pr_res_holder;
 	if ((pr_reg)) {
+		add_len = 16; /* Hardcoded to 16 when a reservation is held. */
 		/*
 		 * Set the hardcoded Additional Length
 		 */
@@ -4088,7 +4089,7 @@ err:
 	spin_unlock(&se_dev->dev_reservation_lock);
 	transport_kunmap_data_sg(cmd);
 
-	return 0;
+	return add_len + 8;
 }
 
 /*
@@ -4144,7 +4145,7 @@ static int core_scsi3_pri_report_capabilities(struct se_cmd *cmd)
 
 	transport_kunmap_data_sg(cmd);
 
-	return 0;
+	return 8;
 }
 
 /*
@@ -4295,7 +4296,7 @@ static int core_scsi3_pri_read_full_status(struct se_cmd *cmd)
 
 	transport_kunmap_data_sg(cmd);
 
-	return 0;
+	return add_len + 8;
 }
 
 int target_scsi3_emulate_pr_in(struct se_task *task)

@@ -65,7 +65,7 @@ target_fill_alua_data(struct se_port *port, unsigned char *buf)
 	spin_unlock(&tg_pt_gp_mem->tg_pt_gp_mem_lock);
 }
 
-static int
+static void
 target_emulate_inquiry_std(struct se_cmd *cmd, char *buf)
 {
 	struct se_lun *lun = cmd->se_lun;
@@ -137,12 +137,10 @@ target_emulate_inquiry_std(struct se_cmd *cmd, char *buf)
 	memcpy(buf + off, vers_desc + 1, sizeof vers_desc - 2);
 
 	buf[4] = 95 - 4; /* additional length */
-
-	return 0;
 }
 
 /* unit serial number */
-static int
+static void
 target_emulate_evpd_80(struct se_cmd *cmd, unsigned char *buf)
 {
 	struct se_device *dev = cmd->se_dev;
@@ -160,7 +158,6 @@ target_emulate_evpd_80(struct se_cmd *cmd, unsigned char *buf)
 		len++; /* Extra Byte for NULL Terminator */
 		buf[3] = len;
 	}
-	return 0;
 }
 
 static void
@@ -200,7 +197,7 @@ target_parse_naa_6h_vendor_specific(struct se_device *dev, unsigned char *buf)
  * Device identification VPD, for a complete list of
  * DESIGNATOR TYPEs see spc4r17 Table 459.
  */
-static int
+static void
 target_emulate_evpd_83(struct se_cmd *cmd, unsigned char *buf)
 {
 	struct se_device *dev = cmd->se_dev;
@@ -448,11 +445,10 @@ check_scsi_name:
 	}
 	buf[2] = ((len >> 8) & 0xff);
 	buf[3] = (len & 0xff); /* Page Length for VPD 0x83 */
-	return 0;
 }
 
 /* Extended INQUIRY Data VPD Page */
-static int
+static void
 target_emulate_evpd_86(struct se_cmd *cmd, unsigned char *buf)
 {
 	buf[3] = 0x3c;
@@ -462,11 +458,10 @@ target_emulate_evpd_86(struct se_cmd *cmd, unsigned char *buf)
 	/* If WriteCache emulation is enabled, set V_SUP */
 	if (cmd->se_dev->se_sub_dev->se_dev_attrib.emulate_write_cache > 0)
 		buf[6] = 0x01;
-	return 0;
 }
 
 /* Block Limits VPD page */
-static int
+static void
 target_emulate_evpd_b0(struct se_cmd *cmd, unsigned char *buf)
 {
 	struct se_device *dev = cmd->se_dev;
@@ -505,7 +500,7 @@ target_emulate_evpd_b0(struct se_cmd *cmd, unsigned char *buf)
 	 * Exit now if we don't support TP.
 	 */
 	if (!have_tp)
-		return 0;
+		return;
 
 	/*
 	 * Set MAXIMUM UNMAP LBA COUNT
@@ -530,12 +525,10 @@ target_emulate_evpd_b0(struct se_cmd *cmd, unsigned char *buf)
 			   &buf[32]);
 	if (dev->se_sub_dev->se_dev_attrib.unmap_granularity_alignment != 0)
 		buf[32] |= 0x80; /* Set the UGAVALID bit */
-
-	return 0;
 }
 
 /* Block Device Characteristics VPD page */
-static int
+static void
 target_emulate_evpd_b1(struct se_cmd *cmd, unsigned char *buf)
 {
 	struct se_device *dev = cmd->se_dev;
@@ -543,12 +536,10 @@ target_emulate_evpd_b1(struct se_cmd *cmd, unsigned char *buf)
 	buf[0] = dev->transport->get_device_type(dev);
 	buf[3] = 0x3c;
 	buf[5] = dev->se_sub_dev->se_dev_attrib.is_nonrot ? 1 : 0;
-
-	return 0;
 }
 
 /* Thin Provisioning VPD */
-static int
+static void
 target_emulate_evpd_b2(struct se_cmd *cmd, unsigned char *buf)
 {
 	struct se_device *dev = cmd->se_dev;
@@ -596,16 +587,14 @@ target_emulate_evpd_b2(struct se_cmd *cmd, unsigned char *buf)
 	 */
 	if (dev->se_sub_dev->se_dev_attrib.emulate_tpws != 0)
 		buf[5] |= 0x60;
-
-	return 0;
 }
 
-static int
+static void
 target_emulate_evpd_00(struct se_cmd *cmd, unsigned char *buf);
 
 static struct {
 	uint8_t		page;
-	int		(*emulate)(struct se_cmd *, unsigned char *);
+	void		(*emulate)(struct se_cmd *, unsigned char *);
 } evpd_handlers[] = {
 	{ .page = 0x00, .emulate = target_emulate_evpd_00 },
 	{ .page = 0x80, .emulate = target_emulate_evpd_80 },
@@ -617,7 +606,7 @@ static struct {
 };
 
 /* supported vital product data pages */
-static int
+static void
 target_emulate_evpd_00(struct se_cmd *cmd, unsigned char *buf)
 {
 	int p;
@@ -633,8 +622,6 @@ target_emulate_evpd_00(struct se_cmd *cmd, unsigned char *buf)
 		for (p = 0; p < ARRAY_SIZE(evpd_handlers); ++p)
 			buf[p + 4] = evpd_handlers[p].page;
 	}
-
-	return 0;
 }
 
 int target_emulate_inquiry(struct se_task *task)
@@ -680,14 +667,16 @@ int target_emulate_inquiry(struct se_task *task)
 			goto out;
 		}
 
-		ret = target_emulate_inquiry_std(cmd, buf);
+		target_emulate_inquiry_std(cmd, buf);
+		ret = buf[4] + 5;
 		goto out;
 	}
 
 	for (p = 0; p < ARRAY_SIZE(evpd_handlers); ++p) {
 		if (cdb[2] == evpd_handlers[p].page) {
 			buf[1] = cdb[2];
-			ret = evpd_handlers[p].emulate(cmd, buf);
+			evpd_handlers[p].emulate(cmd, buf);
+			ret = buf[3] + 4;
 			goto out;
 		}
 	}
@@ -703,10 +692,6 @@ out:
 	}
 	transport_kunmap_data_sg(cmd);
 
-	if (!ret) {
-		task->task_scsi_status = GOOD;
-		transport_complete_task(task, 1);
-	}
 	return ret;
 }
 
@@ -741,9 +726,7 @@ int target_emulate_readcapacity(struct se_task *task)
 
 	transport_kunmap_data_sg(cmd);
 
-	task->task_scsi_status = GOOD;
-	transport_complete_task(task, 1);
-	return 0;
+	return 8;
 }
 
 int target_emulate_readcapacity_16(struct se_task *task)
@@ -776,9 +759,7 @@ int target_emulate_readcapacity_16(struct se_task *task)
 
 	transport_kunmap_data_sg(cmd);
 
-	task->task_scsi_status = GOOD;
-	transport_complete_task(task, 1);
-	return 0;
+	return 32;
 }
 
 static int
@@ -1060,9 +1041,7 @@ int target_emulate_request_sense(struct se_task *task)
 
 end:
 	transport_kunmap_data_sg(cmd);
-	task->task_scsi_status = GOOD;
-	transport_complete_task(task, 1);
-	return 0;
+	return 18;
 }
 
 /*

@@ -2511,6 +2511,12 @@ static int iscsit_send_data_in(
 		} else if (cmd->se_cmd.se_cmd_flags & SCF_UNDERFLOW_BIT) {
 			hdr->flags |= ISCSI_FLAG_DATA_UNDERFLOW;
 			hdr->residual_count = cpu_to_be32(cmd->se_cmd.residual_count);
+			/*
+			 * Handle case where actual response data
+			 * didn't fill the data in buffer.
+			 */
+			if (cmd->se_cmd.data_length < cmd->data_length)
+				datain.length = max_t(int, 0, cmd->se_cmd.data_length - datain.offset);
 		}
 	}
 	hton24(hdr->dlength, datain.length);

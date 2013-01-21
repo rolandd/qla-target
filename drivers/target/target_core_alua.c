@@ -165,9 +165,7 @@ int target_emulate_report_target_port_groups(struct se_task *task)
 
 	transport_kunmap_data_sg(cmd);
 
-	task->task_scsi_status = GOOD;
-	transport_complete_task(task, 1);
-	return 0;
+	return rd_len + 4;
 }
 
 /*

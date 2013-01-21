@@ -2136,13 +2136,27 @@ check_depth:
 		error = cmd->execute_task(task);
 	else
 		error = dev->transport->do_task(task);
-	if (error != 0) {
+	if (error < 0) {
 		spin_lock_irqsave(&cmd->t_state_lock, flags);
 		task->task_flags &= ~TF_ACTIVE;
 		spin_unlock_irqrestore(&cmd->t_state_lock, flags);
 		atomic_set(&cmd->t_transport_sent, 0);
 		transport_stop_tasks_for_cmd(cmd);
 		transport_generic_request_failure(cmd);
+	} else if (error > 0) {
+		if (error < cmd->data_length) {
+			if (cmd->se_cmd_flags & SCF_UNDERFLOW_BIT) {
+				cmd->residual_count += cmd->data_length - error;
+			} else {
+				cmd->se_cmd_flags |= SCF_UNDERFLOW_BIT;
+				cmd->residual_count = cmd->data_length - error;
+			}
+
+			cmd->data_length = error;
+		}
+
+		task->task_scsi_status = GOOD;
+		transport_complete_task(task, 1);
 	}
 
 	new_cmd = NULL;
