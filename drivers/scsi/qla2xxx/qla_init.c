@@ -3091,6 +3091,20 @@ qla2x00_configure_fabric(scsi_qla_host_t *vha)
 			}
 		}
 
+		/*
+		 * If we're not an initiator, skip looking for devices
+		 * and logging in.  There's no reason for us to do it,
+		 * and it seems to actively cause problems in target
+		 * mode if we race with the initiator logging into us
+		 * (we might get the "port ID used" status back from
+		 * our login command and log out the initiator, which
+		 * seems to cause havoc).
+		 */
+		if (!qla_ini_mode_enabled(base_vha)) {
+			dev_info(&vha->hw->pdev->dev, "skipping port login because initiator mode not enabled.\n");
+			break;
+		}
+
 		rval = qla2x00_find_all_fabric_devs(vha, &new_fcports);
 		if (rval != QLA_SUCCESS)
 			break;
