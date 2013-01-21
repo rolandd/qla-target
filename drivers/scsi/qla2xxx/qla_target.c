@@ -421,7 +421,8 @@ static int qla_tgt_reset(struct scsi_qla_host *vha, void *iocb, int mcmd)
 			sess = NULL;
 #endif
 	} else {
-		sess = ha->tgt_ops->find_sess_by_loop_id(vha, loop_id);
+		if (ha->tgt_ops)
+			sess = ha->tgt_ops->find_sess_by_loop_id(vha, loop_id);
 	}
 
 	ql_dbg(ql_dbg_tgt, vha, 0xe003, "Using sess for"
@@ -1307,6 +1308,10 @@ static void qla_tgt_24xx_handle_abts(struct scsi_qla_host *vha,
 	s_id = (abts->fcp_hdr_le.s_id[0] << 16) | (abts->fcp_hdr_le.s_id[1] << 8) |
 		abts->fcp_hdr_le.s_id[2];
 
+	if (!ha->tgt_ops) {
+		qla_tgt_24xx_send_abts_resp(vha, abts, FCP_TMF_REJECTED, false);
+		return;
+	}
 	sess = ha->tgt_ops->find_sess_by_s_id(vha, (unsigned char *)&s_id);
 	if (!sess) {
 		ql_dbg(ql_dbg_tgt_mgt, vha, 0xe115, "qla_target(%d): task abort for"
@@ -2582,6 +2587,12 @@ static void qla_tgt_do_work(struct work_struct *work)
 		goto out_term;
 
 	spin_lock_irqsave(&ha->hardware_lock, flags);
+
+	if (!ha->tgt_ops) {
+		spin_unlock_irqrestore(&ha->hardware_lock, flags);
+		goto out_term;
+	}
+
 	sess = ha->tgt_ops->find_sess_by_s_id(vha,
 				atio->u.isp24.fcp_hdr.s_id);
 	if (sess) {
@@ -2594,6 +2605,7 @@ static void qla_tgt_do_work(struct work_struct *work)
 			kref_get(&sess->se_sess->sess_kref);
 		}
 	}
+
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
 	if (unlikely(!sess)) {
@@ -2827,6 +2839,8 @@ static int qla_tgt_handle_task_mgmt(struct scsi_qla_host *vha, void *iocb)
 
 	lun = a->u.isp24.fcp_cmnd.lun;
 	fn = a->u.isp24.fcp_cmnd.task_mgmt_flags;
+	if (!ha->tgt_ops)
+		return -ENODEV;
 	sess = ha->tgt_ops->find_sess_by_s_id(vha,
 				a->u.isp24.fcp_hdr.s_id);
 	unpacked_lun = scsilun_to_int((struct scsi_lun *)&lun);
@@ -3520,7 +3534,8 @@ static void qla_tgt_send_busy(struct scsi_qla_host *vha,
 	request_t *pkt;
 	struct qla_tgt_sess *sess = NULL;
 
-	sess = ha->tgt_ops->find_sess_by_s_id(vha, atio->u.isp24.fcp_hdr.s_id);
+	if (ha->tgt_ops)
+		sess = ha->tgt_ops->find_sess_by_s_id(vha, atio->u.isp24.fcp_hdr.s_id);
 	if (!sess) {
 		qla_tgt_send_term_exchange(vha, NULL, atio, 1);
 		return;
