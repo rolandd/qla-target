@@ -329,6 +329,7 @@ static void qla_tgt_free_session_done(struct work_struct *work)
 	struct scsi_qla_host *vha = sess->vha;
 	struct qla_hw_data *ha = vha->hw;
 
+	pr_info("%s(%p)\n", __func__, sess);
 	BUG_ON(!tgt);
 	/*
 	 * Release the target session for FC Nexus from fabric module code.
@@ -511,103 +512,6 @@ out_free_id_list:
 	return res;
 }
 
-static bool qla_tgt_check_fcport_exist(struct scsi_qla_host *vha, struct qla_tgt_sess *sess)
-{
-	struct qla_hw_data *ha = vha->hw;
-	struct qla_port_24xx_data *pmap24;
-	bool res, found = false;
-	int rc, i;
-	uint16_t loop_id = 0xFFFF; /* to eliminate compiler's warning */
-	uint16_t entries;
-	void *pmap;
-	int pmap_len;
-	fc_port_t *fcport;
-	int global_resets;
-	unsigned long flags;
-
-retry:
-	global_resets = atomic_read(&ha->qla_tgt->tgt_global_resets_count);
-
-	rc = qla2x00_get_node_name_list(vha, &pmap, &pmap_len);
-	if (rc != QLA_SUCCESS) {
-		res = false;
-		goto out;
-	}
-
-	pmap24 = pmap;
-	entries = pmap_len/sizeof(*pmap24);
-
-	for (i = 0; i < entries; ++i) {
-		if ((sess->port_name[0] == pmap24[i].port_name[0]) &&
-		    (sess->port_name[1] == pmap24[i].port_name[1]) &&
-		    (sess->port_name[2] == pmap24[i].port_name[2]) &&
-		    (sess->port_name[3] == pmap24[i].port_name[3]) &&
-		    (sess->port_name[4] == pmap24[i].port_name[4]) &&
-		    (sess->port_name[5] == pmap24[i].port_name[5]) &&
-		    (sess->port_name[6] == pmap24[i].port_name[6]) &&
-		    (sess->port_name[7] == pmap24[i].port_name[7])) {
-			loop_id = le16_to_cpu(pmap24[i].loop_id);
-			found = true;
-			break;
-		}
-	}
-
-	kfree(pmap);
-
-	if (!found) {
-		res = false;
-		goto out;
-	}
-
-	printk(KERN_INFO "qla_tgt_check_fcport_exist(): loop_id %d", loop_id);
-
-	fcport = kzalloc(sizeof(*fcport), GFP_KERNEL);
-	if (fcport == NULL) {
-		printk(KERN_ERR "qla_target(%d): Allocation of tmp FC port failed",
-			vha->vp_idx);
-		res = false;
-		goto out;
-	}
-
-	fcport->loop_id = loop_id;
-
-	rc = qla2x00_get_port_database(vha, fcport, 0);
-	if (rc != QLA_SUCCESS) {
-		printk(KERN_ERR "qla_target(%d): Failed to retrieve fcport "
-			"information -- get_port_database() returned %x "
-			"(loop_id=0x%04x)", vha->vp_idx, rc, loop_id);
-		res = false;
-		goto out_free_fcport;
-	}
-
-	if (global_resets != atomic_read(&ha->qla_tgt->tgt_global_resets_count)) {
-		ql_dbg(ql_dbg_tgt_mgt, vha, 0xe105, "qla_target(%d): global reset"
-			" during session discovery (counter was %d, new %d),"
-			" retrying", vha->vp_idx, global_resets,
-			atomic_read(&ha->qla_tgt->tgt_global_resets_count));
-		goto retry;
-	}
-
-	ql_dbg(ql_dbg_tgt_mgt, vha, 0xe106, "Updating sess %p s_id %x:%x:%x, "
-		"loop_id %d) to d_id %x:%x:%x, loop_id %d", sess,
-		sess->s_id.b.domain, sess->s_id.b.al_pa,
-		sess->s_id.b.area, sess->loop_id, fcport->d_id.b.domain,
-		fcport->d_id.b.al_pa, fcport->d_id.b.area, fcport->loop_id);
-
-	spin_lock_irqsave(&ha->hardware_lock, flags);
-	ha->tgt_ops->update_sess(sess, fcport->d_id, fcport->loop_id,
-				 fcport->conf_compl_supported);
-	spin_unlock_irqrestore(&ha->hardware_lock, flags);
-
-	res = true;
-
-out_free_fcport:
-	kfree(fcport);
-
-out:
-	return res;
-}
-
 /* ha->hardware_lock supposed to be held on entry */
 static void qla_tgt_undelete_sess(struct qla_tgt_sess *sess)
 {
@@ -632,39 +536,13 @@ static void qla_tgt_del_sess_work_fn(struct delayed_work *work)
 		sess = list_entry(tgt->del_sess_list.next, typeof(*sess),
 				del_list_entry);
 		if (time_after_eq(jiffies, sess->expires)) {
-			bool cancel;
-
 			qla_tgt_undelete_sess(sess);
 
-			spin_unlock_irqrestore(&ha->hardware_lock, flags);
-			cancel = qla_tgt_check_fcport_exist(vha, sess);
-			spin_lock_irqsave(&ha->hardware_lock, flags);
-
-			if (cancel) {
-				if (sess->deleted) {
-					/*
-					 * sess was again deleted while we were
-					 * discovering it
-					 */
-					continue;
-				}
-
-				printk(KERN_INFO "qla_target(%d): cancel deletion of "
-					"session %p for port %02x:%02x:%02x:%02x:%02x:"
-					"%02x:%02x:%02x (loop ID %d), because it isn't"
-					" deleted by firmware", vha->vp_idx, sess,
-					sess->port_name[0], sess->port_name[1],
-					sess->port_name[2], sess->port_name[3],
-					sess->port_name[4], sess->port_name[5],
-					sess->port_name[6], sess->port_name[7],
-					sess->loop_id);
-			} else {
-				ql_dbg(ql_dbg_tgt_mgt, vha, 0xe107, "Timeout: sess %p"
-					" about to be deleted\n", sess);
-				printk("Releasing qla_tgt_del_sess_work_fn w/o hardware_lock >>>>>>>>>>>>\n");
-				ha->tgt_ops->shutdown_sess(sess);
-				ha->tgt_ops->put_sess(sess);
-			}
+			ql_dbg(ql_dbg_tgt_mgt, vha, 0xe107, "Timeout: sess %p"
+				" about to be deleted\n", sess);
+			printk("Releasing qla_tgt_del_sess_work_fn w/o hardware_lock >>>>>>>>>>>>\n");
+			ha->tgt_ops->shutdown_sess(sess);
+			ha->tgt_ops->put_sess(sess);
 		} else {
 			schedule_delayed_work(&tgt->sess_del_work,
 				jiffies - sess->expires);
