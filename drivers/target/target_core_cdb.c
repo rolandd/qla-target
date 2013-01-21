@@ -95,6 +95,7 @@ target_emulate_inquiry_std(struct se_cmd *cmd, char *buf)
 	if (dev->se_sub_dev->t10_alua.alua_type == SPC3_ALUA_EMULATED)
 		target_fill_alua_data(lun->lun_sep, buf);
 
+	buf[6] = 0x10; /* MultiP=1 -- we're always multiport */
 	buf[7] = 0x2; /* CmdQue=1 */
 
 	strncpy(&buf[8], PURE_VENDOR_ID, 8);
