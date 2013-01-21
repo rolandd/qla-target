@@ -3028,19 +3028,20 @@ static int transport_generic_cmd_sequencer(
 		if (!passthrough)
 			cmd->execute_task = target_emulate_write_same;
 		break;
-	case ALLOW_MEDIUM_REMOVAL:
+	case VERIFY:
+		/* Fall through to noop for now... */
+	case TEST_UNIT_READY:
+		cmd->se_cmd_flags |= SCF_SCSI_NON_DATA_CDB;
+		if (!passthrough)
+			cmd->execute_task = target_emulate_noop;
+		break;
 	case ERASE:
 	case REZERO_UNIT:
 	case SEEK_10:
 	case SPACE:
 	case START_STOP:
-	case TEST_UNIT_READY:
-	case VERIFY:
+	case ALLOW_MEDIUM_REMOVAL:
 	case WRITE_FILEMARKS:
-		cmd->se_cmd_flags |= SCF_SCSI_NON_DATA_CDB;
-		if (!passthrough)
-			cmd->execute_task = target_emulate_noop;
-		break;
 	case GPCMD_CLOSE_TRACK:
 	case INITIALIZE_ELEMENT_STATUS:
 	case GPCMD_LOAD_UNLOAD:
