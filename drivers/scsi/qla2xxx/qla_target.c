@@ -2125,6 +2125,8 @@ done:
 		if (!ha_locked && !in_interrupt())
 			msleep(250); /* just in case */
 
+		if (WARN_ON(cmd->sg_mapped))
+			qla_tgt_unmap_sg(vha, cmd);
 		vha->hw->tgt_ops->free_cmd(cmd);
 	}
 }
