@@ -536,15 +536,16 @@ EXPORT_SYMBOL(nf_nat_protocol_unregister);
 static void nf_nat_cleanup_conntrack(struct nf_conn *ct)
 {
 	struct nf_conn_nat *nat = nf_ct_ext_find(ct, NF_CT_EXT_NAT);
+	unsigned long flags;
 
 	if (nat == NULL || nat->ct == NULL)
 		return;
 
 	NF_CT_ASSERT(nat->ct->status & IPS_SRC_NAT_DONE);
 
-	spin_lock_bh(&nf_nat_lock);
+	spin_lock_irqsave(&nf_nat_lock, flags);
 	hlist_del_rcu(&nat->bysource);
-	spin_unlock_bh(&nf_nat_lock);
+	spin_unlock_irqrestore(&nf_nat_lock, flags);
 }
 
 static void nf_nat_move_storage(void *new, void *old)

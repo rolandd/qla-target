@@ -191,6 +191,7 @@ destroy_conntrack(struct nf_conntrack *nfct)
 	struct nf_conn *ct = (struct nf_conn *)nfct;
 	struct net *net = nf_ct_net(ct);
 	struct nf_conntrack_l4proto *l4proto;
+	unsigned long flags;
 
 	pr_debug("destroy_conntrack(%p)\n", ct);
 	NF_CT_ASSERT(atomic_read(&nfct->use) == 0);
@@ -206,7 +207,7 @@ destroy_conntrack(struct nf_conntrack *nfct)
 
 	rcu_read_unlock();
 
-	spin_lock_bh(&nf_conntrack_lock);
+	spin_lock_irqsave(&nf_conntrack_lock, flags);
 	/* Expectations will have been removed in clean_from_lists,
 	 * except TFTP can create an expectation on the first packet,
 	 * before connection is in the list, so we need to clean here,
@@ -220,7 +221,7 @@ destroy_conntrack(struct nf_conntrack *nfct)
 	}
 
 	NF_CT_STAT_INC(net, delete);
-	spin_unlock_bh(&nf_conntrack_lock);
+	spin_unlock_irqrestore(&nf_conntrack_lock, flags);
 
 	if (ct->master)
 		nf_ct_put(ct->master);
