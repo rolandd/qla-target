@@ -2096,8 +2096,7 @@ void qla24xx_process_response_queue(struct scsi_qla_host *vha,
 
 			qla2x00_error_entry(vha, rsp, (sts_entry_t *) pkt);
 
-			if (qla_tgt_24xx_process_response_error(vha, pkt) == 1)
-				break;
+			(void) qla_tgt_24xx_process_response_error(vha, pkt);
 
 			((response_t *)pkt)->signature = RESPONSE_PROCESSED;
 			wmb();
