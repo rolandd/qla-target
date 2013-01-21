@@ -2612,15 +2612,16 @@ qla2x00_configure_loop(scsi_qla_host_t *vha)
 	if (test_bit(LOCAL_LOOP_UPDATE, &vha->dpc_flags)) {
 		rval = qla2x00_configure_hba(vha);
 		if (rval != QLA_SUCCESS) {
-			ql_dbg(ql_dbg_disc, vha, 0x2013,
+			ql_log(ql_log_info, vha, 0x2013,
 			    "Unable to configure HBA.\n");
 			return (rval);
 		}
 	}
 
 	save_flags = flags = vha->dpc_flags;
-	ql_dbg(ql_dbg_disc, vha, 0x2014,
-	    "Configure loop -- dpc flags = 0x%lx.\n", flags);
+	ql_log(ql_log_info, vha, 0x2014,
+		    "qla2x00_configure_loop:  flags 0x%lx  current topology %d\n",
+		    flags, ha->current_topology);
 
 	/*
 	 * If we have both an RSCN and PORT UPDATE pending then handle them
@@ -2668,12 +2669,17 @@ qla2x00_configure_loop(scsi_qla_host_t *vha)
 
 	if (rval == QLA_SUCCESS && test_bit(RSCN_UPDATE, &flags)) {
 		if (LOOP_TRANSITION(vha)) {
-			ql_dbg(ql_dbg_disc, vha, 0x201e,
+			ql_log(ql_log_info, vha, 0x201e,
 			    "Needs RSCN update and loop transition.\n");
 			rval = QLA_FUNCTION_FAILED;
 		}
-		else
+		else {
+			ql_log(ql_log_info, vha, 0, "Calling qla2x00_configure_fabric\n");
 			rval = qla2x00_configure_fabric(vha);
+		}
+	} else {
+		ql_log(ql_log_info, vha, 0x201e, "Skipping configure_fabric b/c rval %d RSCN_UPDATE %d\n",
+			    rval, test_bit(RSCN_UPDATE, &flags));
 	}
 
 	if (rval == QLA_SUCCESS) {
@@ -3032,7 +3038,7 @@ qla2x00_configure_fabric(scsi_qla_host_t *vha)
 		loop_id = SNS_FL_PORT;
 	rval = qla2x00_get_port_name(vha, loop_id, vha->fabric_node_name, 1);
 	if (rval != QLA_SUCCESS) {
-		ql_dbg(ql_dbg_disc, vha, 0x201f,
+		ql_log(ql_log_info, vha, 0x201f,
 		    "MBX_GET_PORT_NAME failed, No FL Port.\n");
 
 		vha->device_flags &= ~SWITCH_FOUND;

@@ -3844,6 +3844,10 @@ qla2x00_do_dpc(void *data)
 				ql_log(ql_log_info, base_vha, 0x121,
 				    "Failed to enable receiving of RSCN "
 				    "requests: 0x%x.\n", ret);
+			else
+				ql_log(ql_log_info, base_vha, 0x121,
+				    "Enabled receiving of RSCN "
+				    "requests\n");
 			clear_bit(SCR_PENDING, &base_vha->dpc_flags);
 		}
 

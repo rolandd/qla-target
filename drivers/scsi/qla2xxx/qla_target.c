@@ -891,6 +891,16 @@ void qla_tgt_fc_port_deleted(struct scsi_qla_host *vha, fc_port_t *fcport)
 	struct qla_tgt_sess *sess;
 	unsigned long flags;
 
+	dev_info(&ha->pdev->dev, "qla_target(%u) host %lu: (vha->hw->tgt_ops %p / tgt %p / stop %d) deleting rport %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x port_type %d\n",
+		 vha->vp_idx, vha->host_no,
+		 vha->hw->tgt_ops, tgt, tgt->tgt_stop,
+		 fcport->port_name[0], fcport->port_name[1],
+		 fcport->port_name[2], fcport->port_name[3],
+		 fcport->port_name[4], fcport->port_name[5],
+		 fcport->port_name[6], fcport->port_name[7],
+		 fcport->port_type);
+
+
 	if (!vha->hw->tgt_ops)
 		return;
 
@@ -904,6 +914,13 @@ void qla_tgt_fc_port_deleted(struct scsi_qla_host *vha, fc_port_t *fcport)
 	}
 	sess = qla_tgt_find_sess_by_port_name(tgt, fcport->port_name);
 	if (!sess) {
+		dev_info(&ha->pdev->dev, "qla_target(%u) host %lu: rport to delete not found: %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x\n",
+			 vha->vp_idx, vha->host_no,
+			 fcport->port_name[0], fcport->port_name[1],
+			 fcport->port_name[2], fcport->port_name[3],
+			 fcport->port_name[4], fcport->port_name[5],
+			 fcport->port_name[6], fcport->port_name[7]);
+
 		spin_unlock_irqrestore(&ha->hardware_lock, flags);
 		return;
 	}

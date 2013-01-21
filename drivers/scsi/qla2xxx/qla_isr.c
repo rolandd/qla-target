@@ -622,6 +622,9 @@ skip_rio:
 		break;
 
 	case MBA_PORT_UPDATE:		/* Port database update */
+		ql_log(ql_log_info, vha, 0,
+		       "PORT UPDATE %04x %04x %04x.\n",
+		       mb[1], mb[2], mb[3]);
 		/*
 		 * Handle only global and vn-port update events
 		 *
@@ -714,7 +717,7 @@ skip_rio:
 		if (ha->flags.npiv_supported && vha->vp_idx != (mb[3] & 0xff))
 			break;
 
-		ql_dbg(ql_dbg_async, vha, 0x5013,
+		ql_log(ql_log_info, vha, 0x5013,
 		    "RSCN database changed -- %04x %04x %04x.\n",
 		    mb[1], mb[2], mb[3]);
 
