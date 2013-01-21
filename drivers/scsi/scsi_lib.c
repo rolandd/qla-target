@@ -1079,8 +1079,11 @@ static struct scsi_cmnd *scsi_get_cmd_from_req(struct scsi_device *sdev,
 int scsi_setup_blk_pc_cmnd(struct scsi_device *sdev, struct request *req)
 {
 	struct scsi_cmnd *cmd;
-	int ret = scsi_prep_state_check(sdev, req);
+	int ret;
 
+	if (!sdev)
+		return BLKPREP_KILL;
+	ret = scsi_prep_state_check(sdev, req);
 	if (ret != BLKPREP_OK)
 		return ret;
 
