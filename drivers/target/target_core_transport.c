@@ -3275,8 +3275,8 @@ static int transport_generic_cmd_sequencer(
 		} else {
 			cmd->se_cmd_flags |= SCF_UNDERFLOW_BIT;
 			cmd->residual_count = (cmd->data_length - size);
+			cmd->data_length = size;
 		}
-		cmd->data_length = size;
 	}
 
 	transport_set_supported_SAM_opcode(cmd);
