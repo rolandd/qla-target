@@ -2279,7 +2279,10 @@ static int iscsit_handle_immediate_data(
 		}
 	}
 
-	cmd->write_data_done += length;
+	/* If we got more immediate data than we needed total data,
+	 * don't overflow and have the next data transfer length go
+	 * negative. */
+	cmd->write_data_done = min(cmd->write_data_done + length, cmd->data_length);
 
 	if (cmd->write_data_done == cmd->data_length) {
 		spin_lock_bh(&cmd->istate_lock);
