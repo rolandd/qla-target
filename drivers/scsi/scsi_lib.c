@@ -19,6 +19,7 @@
 #include <linux/delay.h>
 #include <linux/hardirq.h>
 #include <linux/scatterlist.h>
+#include <linux/random.h>
 
 #include <scsi/scsi.h>
 #include <scsi/scsi_cmnd.h>
@@ -1472,6 +1473,94 @@ static void scsi_softirq_done(struct request *rq)
 	}
 }
 
+
+/* returns a negative errno if an error should be injected, else 0. */
+int scsi_error_inject(struct scsi_device *sdp, struct request *req)
+{
+	int count;
+	if (sdp->error_inject_type) {
+		/*
+		 * Match the type of this req with the type we want to
+		 * inject errors on.
+		 */
+		enum scsi_err_inj_iotype iotype = sdp->error_inject_iotype;
+		enum scsi_err_inj inj_type = sdp->error_inject_type;
+
+		if (req->cmd_type == REQ_TYPE_FS) {
+			switch (rq_data_dir(req)) {
+			case WRITE:
+				if (!(iotype & FAIL_WRITES))
+					return 0;
+				break;
+			case READ :
+				if (!(iotype & FAIL_READS))
+    					return 0;
+				break;
+			default:
+				if (!(iotype & FAIL_OTHER))
+					return 0;
+			}
+		}
+		else if (!(iotype & FAIL_OTHER))
+			return 0;
+
+		if (inj_type == SCSI_ERR_INJ_FOREVER)
+			return -EIO;
+
+		if (inj_type == SCSI_ERR_INJ_COUNT) {
+			/*
+			 * Note error_inject_count might go negative by some
+			 * small number if a bunch of cpus go down this code
+			 * path simultaneously.  We don't care because this
+			 * number is finite and error_inject_enabled will go
+			 * to 0 and prevent future callers from continuing to
+			 * decrement the counter further.
+			 */
+			count = atomic64_dec_return(&sdp->error_inject_count);
+			if (count >= 0)
+				return -EIO;
+		}
+
+		if (inj_type == SCSI_ERR_INJ_TIME) {
+			if (time_before(jiffies, sdp->error_inject_expires))
+				return -EIO;
+		}
+		if (inj_type == SCSI_ERR_INJ_FLAKY) {
+			unsigned long rate, next_err;
+			count = atomic64_dec_return(&sdp->error_inject_count);
+			if (likely(count >= 0))
+				return 0;
+
+			rate = sdp->error_inject_flaky_rate;
+			next_err = scsi_error_inject_next_random(rate);
+			atomic64_set(&sdp->error_inject_count, next_err);
+			return -EIO;
+		}
+		sdp->error_inject_type = SCSI_ERR_INJ_NONE;
+		sdev_printk(KERN_INFO, sdp, "error inject is done\n");
+	}
+	return 0;
+}
+EXPORT_SYMBOL(scsi_error_inject);
+
+unsigned long scsi_error_inject_next_random(unsigned long rate)
+{
+	/*
+	 * This is a really crap simulation of a Poisson
+	 * distribution.  The probability of choosing a
+	 * "next" value of k given a failure rate r should be
+	 * p(k) = r * (1-r)^k  [ where r = 1/rate ]
+	 * But that would be way too much work.
+	 * Instead use a flat distribution out to k=rate.
+	 * I don't think anyone will care that much.
+	 */
+	unsigned long next_err;
+	get_random_bytes(&next_err, sizeof next_err);
+	next_err = next_err % (2 * rate);
+	return next_err;
+}
+EXPORT_SYMBOL(scsi_error_inject_next_random);
+
 /*
  * Function:    scsi_request_fn()
  *
@@ -1524,6 +1613,10 @@ static void scsi_request_fn(struct request_queue *q)
 			continue;
 		}
 
+		if (unlikely(scsi_error_inject(sdev, req))) {
+			scsi_kill_request(req, q);
+			continue;
+		}
 
 		/*
 		 * Remove the request from the request list.

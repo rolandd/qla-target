@@ -48,6 +48,7 @@
 #include <linux/delay.h>
 #include <linux/mutex.h>
 #include <linux/string_helpers.h>
+#include <linux/ctype.h>
 #include <linux/async.h>
 #include <linux/slab.h>
 #include <asm/uaccess.h>
@@ -345,6 +346,144 @@ sd_store_provisioning_mode(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
+/*
+ * Allowed error inject strings:
+ * IOTYPE time NNNN : fail I/Os for a period of NNN milliseconds.
+ * IOTYPE count MMM : fail exactly MMM I/Os.
+ * IOTYPE fail : fail I/Os until future notice.
+ * IOTYPE flaky NNN : fail 1 of every NNN I/Os until further notice.
+ * unknown or empty strings will cause error injection to be disabled.
+ *
+ * allowed IOTYPE strings: (all|[rwo]+)
+ * "all" fails all I/Os
+ * "r" fails only reads
+ * "w" fails only writes
+ * "o" fails all other I/Os (flushes, sg_io, etc)
+ * combinations are permitted: "rw", "ro", "ow".
+ *
+ * Examples:
+ * "all fail"   : fail all I/Os until further notice
+ * ""           : return to normal operation
+ * "r time 100" : fail all reads for 100ms
+ * "w count 10" : fail 10 writes
+ */
+
+/* returns 0 if we ate at least one whitespace char */
+inline static int eat_whitespace(const char **c)
+{
+	int ret = 1;
+	/* require at least one whitespace char */
+	while(**c && isspace(**c)) {
+		ret = 0;
+		(*c)++;
+	}
+	return ret;
+}
+
+static ssize_t
+sd_store_error_inject(struct device *dev, struct device_attribute *attr,
+			   const char *buf, size_t count)
+{
+	struct scsi_disk *sdkp = to_scsi_disk(dev);
+	struct scsi_device *sdp = sdkp->device;
+	ssize_t ret = -EINVAL;
+	const char *c = buf;
+	enum scsi_err_inj inj_type = SCSI_ERR_INJ_NONE;
+
+	/* parse the IOTYPE token */
+	if (0 == strncmp(c, "all", 3)) {
+		sdp->error_inject_iotype = FAIL_ALL;
+		c += 3; /* size of "all" */
+	} else {
+		sdp->error_inject_iotype = 0;
+		while(*c) {
+			if (*c == 'r')
+				sdp->error_inject_iotype |= FAIL_READS;
+			else if (*c == 'w')
+				sdp->error_inject_iotype |= FAIL_WRITES;
+			else if (*c == 'o')
+				sdp->error_inject_iotype |= FAIL_OTHER;
+			else if (isspace(*c))
+				break;
+			else
+				return -EINVAL;
+			c++;
+		}
+	}
+	if (!sdp->error_inject_iotype) {
+		sdev_printk(KERN_INFO, sdp, "error inject off\n");
+		goto out;
+	}
+	if (eat_whitespace(&c))
+		goto out;
+
+	/* parse the failure type token and the following number, if any */
+	if (0 == strncmp(c, "fail", 4)) {
+		sdev_printk(KERN_INFO, sdp, "error inject on\n");
+		inj_type = SCSI_ERR_INJ_FOREVER;
+	}
+	else if (0 == strncmp(c, "count", 5)) {
+		unsigned int val;
+		c += 5; /* size of "count" */
+		if (eat_whitespace(&c))
+			goto out;
+		val = simple_strtoul(c, NULL, 10);
+		sdev_printk(KERN_INFO, sdp,
+			"error inject for %u I/Os\n", val);
+		atomic64_set(&sdp->error_inject_count, val);
+		if (val > 0)
+			inj_type = SCSI_ERR_INJ_COUNT;
+	}
+	else if (0 == strncmp(c, "time", 4)) {
+		unsigned int val;
+		c += 4; /* size of "time" */
+		if (eat_whitespace(&c))
+			goto out;
+		val = simple_strtoul(c, NULL, 10);
+		sdev_printk(KERN_INFO, sdp,
+			"error inject for %u ms\n", val);
+		sdp->error_inject_expires = jiffies + msecs_to_jiffies(val);
+		if (val > 0)
+			inj_type = SCSI_ERR_INJ_TIME;
+	}
+	else if (0 == strncmp(c, "flaky", 5)) {
+		unsigned long val;
+		unsigned long next_err;
+		c += 5; /* size of "flaky" */
+		if (eat_whitespace(&c))
+			goto out;
+		val = simple_strtoul(c, NULL, 10);
+		sdev_printk(KERN_INFO, sdp,
+			"error inject flaky, ratio 1/%lu\n", val);
+		sdp->error_inject_flaky_rate = val;
+		next_err = scsi_error_inject_next_random(val);
+		atomic64_set(&sdp->error_inject_count, next_err);
+		if (val > 0)
+			inj_type = SCSI_ERR_INJ_FLAKY;
+	}
+	else {
+		goto out;
+	}
+
+	ret = count;
+
+    out:
+	/* now that the other fields are set, enable error inject */
+	sdp->error_inject_type = inj_type;
+	return ret;
+}
+
+static ssize_t
+sd_show_error_inject(struct device *dev, struct device_attribute *attr,
+			  char *buf)
+{
+	struct scsi_disk *sdkp = to_scsi_disk(dev);
+	struct scsi_device *sdp = sdkp->device;
+
+	return snprintf(buf, 30, "%lu\n", atomic64_read(&sdp->error_inject_count));
+}
+
+
 static struct device_attribute sd_disk_attrs[] = {
 	__ATTR(cache_type, S_IRUGO|S_IWUSR, sd_show_cache_type,
 	       sd_store_cache_type),
@@ -359,6 +498,8 @@ static struct device_attribute sd_disk_attrs[] = {
 	__ATTR(thin_provisioning, S_IRUGO, sd_show_thin_provisioning, NULL),
 	__ATTR(provisioning_mode, S_IRUGO|S_IWUSR, sd_show_provisioning_mode,
 	       sd_store_provisioning_mode),
+	__ATTR(error_inject, S_IRUGO|S_IWUSR, sd_show_error_inject,
+	       sd_store_error_inject),
 	__ATTR_NULL,
 };
 
@@ -1094,6 +1235,10 @@ static int sd_ioctl(struct block_device *bdev, fmode_t mode,
 			error = scsi_ioctl(sdp, cmd, p);
 			break;
 		default:
+/*			error = scsi_error_inject(sdp);
+			if (error)
+				break;
+*/
 			error = scsi_cmd_ioctl(disk->queue, disk, mode, cmd, p);
 			if (error != -ENOTTY)
 				break;

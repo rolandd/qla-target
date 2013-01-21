@@ -812,6 +812,13 @@ extern void scsi_free_host_dev(struct scsi_device *);
 extern struct scsi_device *scsi_get_host_dev(struct Scsi_Host *);
 
 /*
+ * Error injection functions
+ */
+struct request;
+int scsi_error_inject(struct scsi_device *sdp, struct request *req);
+unsigned long scsi_error_inject_next_random(unsigned long rate);
+
+/*
  * DIF defines the exchange of protection information between
  * initiator and SBC block device.
  *

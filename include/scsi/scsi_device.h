@@ -65,6 +65,21 @@ struct scsi_event {
 	 */
 };
 
+enum scsi_err_inj {
+	SCSI_ERR_INJ_NONE = 0,
+	SCSI_ERR_INJ_FOREVER,
+	SCSI_ERR_INJ_COUNT,
+	SCSI_ERR_INJ_TIME,
+	SCSI_ERR_INJ_FLAKY,
+};
+
+enum scsi_err_inj_iotype {
+	FAIL_READS  = 1,
+	FAIL_WRITES = 2,
+	FAIL_OTHER  = 4,
+	FAIL_ALL = 7,
+};
+
 struct scsi_device {
 	struct Scsi_Host *host;
 	struct request_queue *request_queue;
@@ -170,6 +185,15 @@ struct scsi_device {
 
 	struct execute_work	ew; /* used to get process context on put */
 	struct work_struct	requeue_work;
+
+	/* error_inject_enabled is not a single bit because
+	   we would need a lock to protect it during other
+	   bit updates */
+	enum scsi_err_inj	error_inject_type;
+	enum scsi_err_inj_iotype error_inject_iotype;
+	atomic64_t		error_inject_count;
+	unsigned long		error_inject_expires;
+	unsigned long		error_inject_flaky_rate;
 
 	struct scsi_dh_data	*scsi_dh_data;
 	enum scsi_device_state sdev_state;
