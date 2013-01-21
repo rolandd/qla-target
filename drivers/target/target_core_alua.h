@@ -67,6 +67,7 @@ extern struct kmem_cache *t10_alua_tg_pt_gp_cache;
 extern struct kmem_cache *t10_alua_tg_pt_gp_mem_cache;
 
 extern int target_emulate_report_target_port_groups(struct se_task *);
+extern bool target_is_explicit_alua_allowed(struct se_cmd *);
 extern int target_emulate_set_target_port_groups(struct se_task *);
 extern int core_alua_check_nonop_delay(struct se_cmd *);
 extern int core_alua_do_port_transition(struct t10_alua_tg_pt_gp *,

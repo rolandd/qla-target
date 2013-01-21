@@ -2817,13 +2817,18 @@ static int transport_generic_cmd_sequencer(
 			 * Check for emulated MO_SET_TARGET_PGS.
 			 */
 			if (cdb[1] == MO_SET_TARGET_PGS &&
-			    su_dev->t10_alua.alua_type == SPC3_ALUA_EMULATED) {
+			    su_dev->t10_alua.alua_type == SPC3_ALUA_EMULATED)
 				cmd->execute_task =
 					target_emulate_set_target_port_groups;
-			}
 
 			size = (cdb[6] << 24) | (cdb[7] << 16) |
 			       (cdb[8] << 8) | cdb[9];
+
+			/* Hack: if size == 0 then we won't hit the
+			 * emulation, so check if we support this here */
+			if ((!size || !cmd->data_length) &&
+			    !target_is_explicit_alua_allowed(cmd))
+				cmd->execute_task = NULL;
 		} else  {
 			/* GPCMD_REPORT_KEY from multi media commands */
 			size = (cdb[8] << 8) + cdb[9];

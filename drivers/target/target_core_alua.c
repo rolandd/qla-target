@@ -168,6 +168,36 @@ int target_emulate_report_target_port_groups(struct se_task *task)
 	return rd_len + 4;
 }
 
+bool target_is_explicit_alua_allowed(struct se_cmd *cmd)
+{
+	struct se_port *l_port = cmd->se_lun->lun_sep;
+	struct t10_alua_tg_pt_gp_member *l_tg_pt_gp_mem;
+	struct t10_alua_tg_pt_gp *l_tg_pt_gp;
+	bool ret;
+
+	if (!l_port)
+		return false;
+
+	l_tg_pt_gp_mem = l_port->sep_alua_tg_pt_gp_mem;
+	if (!l_tg_pt_gp_mem)
+		return false;
+
+	spin_lock(&l_tg_pt_gp_mem->tg_pt_gp_mem_lock);
+
+	l_tg_pt_gp = l_tg_pt_gp_mem->tg_pt_gp;
+	if (!l_tg_pt_gp) {
+		ret = false;
+		goto out;
+	}
+
+	ret = !!(l_tg_pt_gp->tg_pt_gp_alua_access_type & TPGS_EXPLICT_ALUA);
+
+	spin_unlock(&l_tg_pt_gp_mem->tg_pt_gp_mem_lock);
+
+out:
+	return ret;
+}
+
 /*
  * SET_TARGET_PORT_GROUPS for explict ALUA operation.
  *
@@ -180,51 +210,20 @@ int target_emulate_set_target_port_groups(struct se_task *task)
 	struct se_subsystem_dev *su_dev = dev->se_sub_dev;
 	struct se_port *port, *l_port = cmd->se_lun->lun_sep;
 	struct se_node_acl *nacl = cmd->se_sess->se_node_acl;
-	struct t10_alua_tg_pt_gp *tg_pt_gp = NULL, *l_tg_pt_gp;
-	struct t10_alua_tg_pt_gp_member *tg_pt_gp_mem, *l_tg_pt_gp_mem;
+	struct t10_alua_tg_pt_gp *tg_pt_gp = NULL;
+	struct t10_alua_tg_pt_gp_member *tg_pt_gp_mem;
 	unsigned char *buf;
 	unsigned char *ptr;
 	u32 len = 4; /* Skip over RESERVED area in header */
-	int alua_access_state, primary = 0, rc;
+	int alua_access_state, primary = 0, rc = 0;
 	u16 tg_pt_id, rtpi;
 
-	if (!l_port) {
-		cmd->scsi_sense_reason = TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;
+	if (!target_is_explicit_alua_allowed(cmd)) {
+		cmd->scsi_sense_reason = TCM_UNSUPPORTED_SCSI_OPCODE;
 		return -EINVAL;
 	}
+
 	buf = transport_kmap_data_sg(cmd);
-
-	/*
-	 * Determine if explict ALUA via SET_TARGET_PORT_GROUPS is allowed
-	 * for the local tg_pt_gp.
-	 */
-	l_tg_pt_gp_mem = l_port->sep_alua_tg_pt_gp_mem;
-	if (!l_tg_pt_gp_mem) {
-		pr_err("Unable to access l_port->sep_alua_tg_pt_gp_mem\n");
-		cmd->scsi_sense_reason = TCM_UNSUPPORTED_SCSI_OPCODE;
-		rc = -EINVAL;
-		goto out;
-	}
-	spin_lock(&l_tg_pt_gp_mem->tg_pt_gp_mem_lock);
-	l_tg_pt_gp = l_tg_pt_gp_mem->tg_pt_gp;
-	if (!l_tg_pt_gp) {
-		spin_unlock(&l_tg_pt_gp_mem->tg_pt_gp_mem_lock);
-		pr_err("Unable to access *l_tg_pt_gp_mem->tg_pt_gp\n");
-		cmd->scsi_sense_reason = TCM_UNSUPPORTED_SCSI_OPCODE;
-		rc = -EINVAL;
-		goto out;
-	}
-	rc = (l_tg_pt_gp->tg_pt_gp_alua_access_type & TPGS_EXPLICT_ALUA);
-	spin_unlock(&l_tg_pt_gp_mem->tg_pt_gp_mem_lock);
-
-	if (!rc) {
-		pr_debug("Unable to process SET_TARGET_PORT_GROUPS"
-				" while TPGS_EXPLICT_ALUA is disabled\n");
-		cmd->scsi_sense_reason = TCM_UNSUPPORTED_SCSI_OPCODE;
-		rc = -EINVAL;
-		goto out;
-	}
-
 	ptr = &buf[4]; /* Skip over RESERVED area in header */
 
 	while (len < cmd->data_length) {
