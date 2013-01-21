@@ -901,10 +901,15 @@ void se_dev_set_default_attribs(
 						limits->logical_block_size);
 	dev->se_sub_dev->se_dev_attrib.max_sectors = limits->max_sectors;
 	/*
-	 * Set optimal_sectors from max_sectors, which can be lowered via
-	 * configfs.
+	 * Set fabric_max_sectors, which is reported in block limits
+	 * VPD page (B0h).
 	 */
-	dev->se_sub_dev->se_dev_attrib.optimal_sectors = limits->max_sectors;
+	dev->se_sub_dev->se_dev_attrib.fabric_max_sectors = DA_FABRIC_MAX_SECTORS;
+	/*
+	 * Set optimal_sectors from fabric_max_sectors, which can be
+	 * lowered via configfs.
+	 */
+	dev->se_sub_dev->se_dev_attrib.optimal_sectors = DA_FABRIC_MAX_SECTORS;
 	/*
 	 * queue_depth is based on subsystem plugin dependent requirements.
 	 */
@@ -1249,10 +1254,10 @@ int se_dev_set_optimal_sectors(struct se_device *dev, u32 optimal_sectors)
 				" changed for TCM/pSCSI\n", dev);
 		return -EINVAL;
 	}
-	if (optimal_sectors > dev->se_sub_dev->se_dev_attrib.max_sectors) {
+	if (optimal_sectors > dev->se_sub_dev->se_dev_attrib.fabric_max_sectors) {
 		pr_err("dev[%p]: Passed optimal_sectors %u cannot be"
-			" greater than max_sectors: %u\n", dev,
-			optimal_sectors, dev->se_sub_dev->se_dev_attrib.max_sectors);
+			" greater than fabric_max_sectors: %u\n", dev,
+			optimal_sectors, dev->se_sub_dev->se_dev_attrib.fabric_max_sectors);
 		return -EINVAL;
 	}
 

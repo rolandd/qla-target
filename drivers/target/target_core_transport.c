@@ -3087,6 +3087,13 @@ static int transport_generic_cmd_sequencer(
 		cmd->data_length = size;
 	}
 
+	if (cmd->se_cmd_flags & SCF_SCSI_DATA_SG_IO_CDB &&
+	    sectors > dev->se_sub_dev->se_dev_attrib.fabric_max_sectors) {
+		printk_ratelimited(KERN_ERR "SCSI OP %02xh with too big sectors %d\n",
+				   cdb[0], sectors);
+		goto out_invalid_cdb_field;
+	}
+
 	/* reject any command that we don't have a handler for */
 	if (!(passthrough || cmd->execute_task ||
 	     (cmd->se_cmd_flags & SCF_SCSI_DATA_SG_IO_CDB)))
