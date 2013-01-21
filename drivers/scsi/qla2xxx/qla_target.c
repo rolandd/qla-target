@@ -437,10 +437,10 @@ static void qla_tgt_schedule_sess_for_deletion(struct qla_tgt_sess *sess, bool i
 	sess->expires = jiffies + dev_loss_tmo * HZ;
 
 	dev_info(&sess->vha->hw->pdev->dev,
-		 "qla_target(%d) host %lu: session for port %02x:%02x:%02x:"
+		 "qla_target(%d) host %lu: session %p for port %02x:%02x:%02x:"
 		 "%02x:%02x:%02x:%02x:%02x (loop ID %d) scheduled for "
 		 "deletion in %u secs (expires: %lu) immed: %d\n",
-		 sess->vha->vp_idx, tgt->vha->host_no,
+		 sess->vha->vp_idx, tgt->vha->host_no, sess,
 		 sess->port_name[0], sess->port_name[1],
 		 sess->port_name[2], sess->port_name[3],
 		 sess->port_name[4], sess->port_name[5],
@@ -649,9 +649,9 @@ static void qla_tgt_del_sess_work_fn(struct delayed_work *work)
 				}
 
 				printk(KERN_INFO "qla_target(%d): cancel deletion of "
-					"session for port %02x:%02x:%02x:%02x:%02x:"
+					"session %p for port %02x:%02x:%02x:%02x:%02x:"
 					"%02x:%02x:%02x (loop ID %d), because it isn't"
-					" deleted by firmware", vha->vp_idx,
+					" deleted by firmware", vha->vp_idx, sess,
 					sess->port_name[0], sess->port_name[1],
 					sess->port_name[2], sess->port_name[3],
 					sess->port_name[4], sess->port_name[5],
@@ -767,10 +767,10 @@ static struct qla_tgt_sess *qla_tgt_create_sess(
 	ha->qla_tgt->sess_count++;
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
-	dev_info(&ha->pdev->dev, "qla_target(%d) host %lu: %ssession for "
+	dev_info(&ha->pdev->dev, "qla_target(%d) host %lu: %ssession %p for "
 		 "wwn %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x (loop_id "
 		 "%d, s_id %x:%x:%x, confirmed completion %ssupported) added\n",
-		 vha->vp_idx, vha->host_no, local ? "local " : "",
+		 vha->vp_idx, vha->host_no, local ? "local " : "", sess,
 		 fcport->port_name[0], fcport->port_name[1],
 		 fcport->port_name[2], fcport->port_name[3], fcport->port_name[4],
 		 fcport->port_name[5], fcport->port_name[6], fcport->port_name[7],
@@ -823,10 +823,11 @@ void qla_tgt_fc_port_added(struct scsi_qla_host *vha, fc_port_t *fcport)
 		if (sess->deleted) {
 			qla_tgt_undelete_sess(sess);
 
-			printk(KERN_INFO "qla_target(%u): %ssession for port %02x:"
+			printk(KERN_INFO "qla_target(%u): %ssession %p for port %02x:"
 				"%02x:%02x:%02x:%02x:%02x:%02x:%02x (loop ID %d) "
 				"reappeared\n", vha->vp_idx,
-				sess->local ? "local " : "", sess->port_name[0],
+				sess->local ? "local " : "", sess,
+				sess->port_name[0],
 				sess->port_name[1], sess->port_name[2],
 				sess->port_name[3], sess->port_name[4],
 				sess->port_name[5], sess->port_name[6],
@@ -840,9 +841,10 @@ void qla_tgt_fc_port_added(struct scsi_qla_host *vha, fc_port_t *fcport)
 	}
 
 	if (sess && sess->local) {
-		dev_info(&ha->pdev->dev, "qla_target(%u) host %lu: local session for "
+		dev_info(&ha->pdev->dev, "qla_target(%u) host %lu: local session %p for "
 			 "port %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x "
 			 "(loop ID %d) became global\n", vha->vp_idx, vha->host_no,
+			 sess,
 			 fcport->port_name[0], fcport->port_name[1],
 			 fcport->port_name[2], fcport->port_name[3],
 			 fcport->port_name[4], fcport->port_name[5],
