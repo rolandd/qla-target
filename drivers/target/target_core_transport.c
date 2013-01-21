@@ -4690,6 +4690,12 @@ static int transport_generic_do_tmr(struct se_cmd *cmd)
 	return 0;
 }
 
+/* Return true if the transport processing thread has work */
+static inline bool transport_process_work(struct se_device *dev)
+{
+	return atomic_read(&dev->dev_queue_obj.queue_cnt) || kthread_should_stop();
+}
+
 /*	transport_processing_thread():
  *
  *
@@ -4699,15 +4705,41 @@ static int transport_processing_thread(void *param)
 	int ret;
 	struct se_cmd *cmd;
 	struct se_device *dev = param;
+	unsigned long time_limit;
+	unsigned long budget = 2 * HZ;
 
+	/* XXX LIO code used to do:
+
+	set_user_nice(current, -20);
+
+	   here. */
+
+	time_limit = jiffies + budget;
 	while (!kthread_should_stop()) {
-		ret = wait_event_interruptible(dev->dev_queue_obj.thread_wq,
-				atomic_read(&dev->dev_queue_obj.queue_cnt) ||
-				kthread_should_stop());
-		if (ret < 0)
-			goto out;
+		/* We should reset time_limit only if we schedule(), so unroll
+		 * wait_event_interruptible(). There's still the chance
+		 * __wait_event_interruptible may not sleep, but the window
+		 * is very narrow. we can't hit it frequently */
+		if (!transport_process_work(dev)) {
+			ret = 0;
+			__wait_event_interruptible(dev->dev_queue_obj.thread_wq,
+						   transport_process_work(dev),
+						   ret);
+			if (ret < 0)
+				goto out;
+			time_limit = jiffies + budget;
+		}
 
 get_cmd:
+		/*
+		 * Give someone else a chance if we're getting
+		 * hammered with commands.
+		 */
+		if (time_after(jiffies, time_limit)) {
+			cond_resched();
+			time_limit = jiffies + budget;
+		}
+
 		cmd = transport_get_cmd_from_queue(&dev->dev_queue_obj);
 		if (!cmd)
 			continue;
