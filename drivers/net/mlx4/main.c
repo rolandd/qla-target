@@ -184,7 +184,7 @@ static int mlx4_dev_cap(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 		dev->caps.port_width_cap[i] = dev_cap->max_port_width[i];
 		dev->caps.eth_mtu_cap[i]    = dev_cap->eth_mtu[i];
 		dev->caps.def_mac[i]        = dev_cap->def_mac[i];
-		dev->caps.supported_type[i] = dev_cap->supported_port_types[i];
+		dev->caps.supported_type[i] = MLX4_PORT_TYPE_IB;
 		dev->caps.trans_type[i]	    = dev_cap->trans_type[i];
 		dev->caps.vendor_oui[i]     = dev_cap->vendor_oui[i];
 		dev->caps.wavelength[i]     = dev_cap->wavelength[i];
@@ -945,9 +945,11 @@ static int mlx4_setup_hca(struct mlx4_dev *dev)
 
 	for (port = 1; port <= dev->caps.num_ports; port++) {
 		enum mlx4_port_type port_type = 0;
-		mlx4_SENSE_PORT(dev, port, &port_type);
-		if (port_type)
-			dev->caps.port_type[port] = port_type;
+		if (priv->sense.sense_allowed[port]) {
+			mlx4_SENSE_PORT(dev, port, &port_type);
+			if (port_type)
+				dev->caps.port_type[port] = port_type;
+		}
 		ib_port_default_caps = 0;
 		err = mlx4_get_port_ib_caps(dev, port, &ib_port_default_caps);
 		if (err)
