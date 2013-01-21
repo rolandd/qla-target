@@ -1220,7 +1220,7 @@ static void qla_tgt_24xx_send_task_mgmt_ctio(struct scsi_qla_host *vha,
 	ctio->u.status1.ox_id = swab16(atio->u.isp24.fcp_hdr.ox_id);
 	ctio->u.status1.scsi_status = __constant_cpu_to_le16(SS_RESPONSE_INFO_LEN_VALID);
 	ctio->u.status1.response_len = __constant_cpu_to_le16(8);
-	((uint32_t *)ctio->u.status1.sense_data)[0] = cpu_to_be32(resp_code);
+	ctio->u.status1.sense_data[0] = resp_code;
 
 	qla2x00_isp_cmd(vha, vha->req);
 }
