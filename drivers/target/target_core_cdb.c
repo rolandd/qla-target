@@ -990,8 +990,16 @@ int target_emulate_modesense(struct se_task *task)
 		length += target_modesense_control(dev, &buf[offset+length]);
 		break;
 	default:
-		pr_err("MODE SENSE: unimplemented page/subpage: 0x%02x/0x%02x\n",
-		       cdb[2] & 0x3f, cdb[3]);
+		/*
+		 * We don't intend to implement:
+		 *  - obsolete page 03h "format parameters" (checked by Solaris)
+		 *  - page 1ch "informational exceptions" (checked by Windows)
+		 * so don't warn.
+		 */
+		if ((cdb[2] & 0x3f) != 0x03 &&
+		    (cdb[2] & 0x3f) != 0x1c)
+			pr_err("MODE SENSE: unimplemented page/subpage: 0x%02x/0x%02x\n",
+			       cdb[2] & 0x3f, cdb[3]);
 		cmd->scsi_sense_reason = TCM_UNKNOWN_MODE_PAGE;
 		return -EINVAL;
 	}
