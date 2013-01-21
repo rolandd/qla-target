@@ -2729,7 +2729,10 @@ qla2x00_shutdown(struct pci_dev *pdev)
 		qla2x00_disable_eft_trace(vha);
 
 	/* Stop currently executing firmware. */
-	qla2x00_try_to_stop_firmware(vha);
+	if (vha->flags.fw_started) {
+		qla2x00_try_to_stop_firmware(vha);
+		vha->flags.fw_started = 0;
+	}
 
 	/* Turn adapter off line */
 	vha->flags.online = 0;
@@ -2886,7 +2889,10 @@ qla2x00_free_device(scsi_qla_host_t *vha)
 		qla2x00_disable_eft_trace(vha);
 
 	/* Stop currently executing firmware. */
-	qla2x00_try_to_stop_firmware(vha);
+	if (vha->flags.fw_started) {
+		qla2x00_try_to_stop_firmware(vha);
+		vha->flags.fw_started = 0;
+	}
 
 	vha->flags.online = 0;
 

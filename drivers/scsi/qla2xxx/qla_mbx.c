@@ -2675,6 +2675,23 @@ qla2x00_stop_firmware(scsi_qla_host_t *vha)
 
 	ql_dbg(ql_dbg_mbx, vha, 0x10a1, "Entered %s.\n", __func__);
 
+	mcp->mb[0] = MBC_NON_PARTICIPATE;
+	mcp->mb[1] = 1;
+	mcp->out_mb = MBX_0 | MBX_1;
+	mcp->in_mb = MBX_0;
+	mcp->tov = MBX_TOV_SECONDS;
+	mcp->flags = 0;
+	rval = qla2x00_mailbox_command(vha, mcp);
+
+	if (rval != QLA_SUCCESS) {
+		ql_dbg(ql_dbg_mbx, vha, 0x10a2, "Failed=%x.\n", rval);
+		if (mcp->mb[0] == MBS_INVALID_COMMAND)
+			rval = QLA_INVALID_COMMAND;
+		return rval;
+	} else {
+		ql_dbg(ql_dbg_mbx, vha, 0x10a3, "Done %s.\n", __func__);
+	}
+
 	mcp->mb[0] = MBC_STOP_FIRMWARE;
 	mcp->out_mb = MBX_0;
 	mcp->in_mb = MBX_0;

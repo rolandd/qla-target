@@ -2906,6 +2906,7 @@ typedef struct scsi_qla_host {
 
 	volatile struct {
 		uint32_t	init_done		:1;
+		uint32_t	fw_started		:1;
 		uint32_t	online			:1;
 		uint32_t	rscn_queue_overflow	:1;
 		uint32_t	reset_active		:1;

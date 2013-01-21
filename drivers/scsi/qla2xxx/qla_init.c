@@ -500,6 +500,7 @@ qla2x00_initialize_adapter(scsi_qla_host_t *vha)
 
 	/* Clear adapter flags. */
 	vha->flags.online = 0;
+	vha->flags.fw_started = 0;
 	ha->flags.chip_reset_done = 0;
 	vha->flags.reset_active = 0;
 	ha->flags.pci_channel_io_perm_failure = 0;
@@ -1883,6 +1884,7 @@ qla2x00_init_rings(scsi_qla_host_t *vha)
 		ql_log(ql_log_fatal, vha, 0x00d2,
 		    "Init Firmware **** FAILED ****.\n");
 	} else {
+		vha->flags.fw_started = 1;
 		ql_dbg(ql_dbg_init, vha, 0x00d3,
 		    "Init Firmware -- success.\n");
 	}
@@ -4139,6 +4141,23 @@ qla2x00_abort_isp(scsi_qla_host_t *vha)
 		ha->isp_ops->get_flash_version(vha, req->ring);
 
 		ha->isp_ops->nvram_config(vha);
+
+		/*
+		 * If we're not going to do anything, stop the chip
+		 * instead of resetting it.
+		 */
+		if (!qla_tgt_mode_enabled(vha) && !qla_ini_mode_enabled(vha)) {
+			clear_bit(ISP_ABORT_RETRY, &vha->dpc_flags);
+			/*
+			 * Don't try to stop if we haven't started --
+			 * we might hang telling not-running FW to stop.
+			 */
+			if (vha->flags.fw_started) {
+				vha->flags.fw_started = 0;
+				qla2x00_stop_firmware(vha);
+			}
+			return 0;
+		}
 
 		if (!qla2x00_restart_isp(vha)) {
 			clear_bit(RESET_MARKER_NEEDED, &vha->dpc_flags);

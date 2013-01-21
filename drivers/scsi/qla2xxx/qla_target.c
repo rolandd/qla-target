@@ -4673,6 +4673,24 @@ qla_tgt_24xx_config_nvram_stage1(struct scsi_qla_host *vha, struct nvram_24xx *n
 			nv->firmware_options_2 = ha->saved_firmware_options_2;
 			nv->firmware_options_3 = ha->saved_firmware_options_3;
 		}
+
+		/*
+		 * This seems to misbehave with ESX, possibly because
+		 * we leave the port in target mode for a window but
+		 * don't actually handle target commands.  Just
+		 * setting the "disable initiator" bit without the
+		 * "enable target" bit doesn't seem to work -- the
+		 * firmware doesn't like it.
+		 *
+		 * Instead let's try skipping the whole re-initialize
+		 * firmware thing when going out of target mode, and
+		 * try to shut down instead.
+		 */
+		if (0 && !qla_ini_mode_enabled(vha)) {
+			dev_info(&vha->hw->pdev->dev, "initiator mode not enabled\n");
+			nv->firmware_options_1 |= __constant_cpu_to_le32(BIT_4);
+			nv->firmware_options_1 |= __constant_cpu_to_le32(BIT_5);
+		}
 	}
 
 	/* out-of-order frames reassembly */
