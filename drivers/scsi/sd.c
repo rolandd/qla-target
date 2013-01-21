@@ -42,6 +42,7 @@
 #include <linux/errno.h>
 #include <linux/idr.h>
 #include <linux/interrupt.h>
+#include <linux/spinlock.h>
 #include <linux/init.h>
 #include <linux/blkdev.h>
 #include <linux/blkpg.h>
@@ -2745,6 +2746,21 @@ static int sd_probe(struct device *dev)
 	return error;
 }
 
+/*
+ *      This is an 'always fail' prep fn that we can use to force
+ *      incoming I/Os to immediately fail when a device was removed.
+ *      It is almost a copy of scsi_prep_fn.
+ */
+int sd_fail_prep_fn(struct request_queue *q, struct request *req)
+{
+	struct scsi_device *sdev = q->queuedata;
+	int ret = BLKPREP_KILL;
+
+	if (!sdev)
+		return ret;
+	return scsi_prep_return(q, req, ret);
+}
+
 /**
  *	sd_remove - called whenever a scsi disk (previously recognized by
  *	sd_probe) is detached from the system. It is called (potentially
@@ -2759,12 +2775,31 @@ static int sd_probe(struct device *dev)
 static int sd_remove(struct device *dev)
 {
 	struct scsi_disk *sdkp;
+	struct request_queue *q;
 
 	sdkp = dev_get_drvdata(dev);
 	scsi_autopm_get_device(sdkp->device);
 
+        /*
+         * Under the queue lock, disable the queue and try
+         * to flush everything on it.  This should prevent
+         * a possible deadlock between sd_probe_async (waiting
+         * for an I/O on the queue) and sd_remove, which won't
+         * clean the queue until sd_probe_async returns and
+         * async_synchronize_full lets us proceed.
+         */
+        q = sdkp->device->request_queue;
+        spin_lock_irq(q->queue_lock);
+        /* Insert a prep function that fails everything */
+	blk_queue_prep_rq(q, sd_fail_prep_fn);
+	/* Take away the scsi_device pointer, which will
+	   cause the request_fn to flush the queue */
+	q->queuedata = NULL;
+	/* Now force the queue to run, which will do the flussh */
+	__blk_run_queue(q);
+        spin_unlock_irq(q->queue_lock);
+
 	async_synchronize_full();
-	blk_queue_prep_rq(sdkp->device->request_queue, scsi_prep_fn);
 	blk_queue_unprep_rq(sdkp->device->request_queue, NULL);
 	device_del(&sdkp->dev);
 	del_gendisk(sdkp->disk);
