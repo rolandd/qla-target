@@ -108,12 +108,7 @@ int target_emulate_report_target_port_groups(struct se_task *task)
 		/*
 		 * Set supported ASYMMETRIC ACCESS State bits
 		 */
-		buf[off] = 0x80; /* T_SUP */
-		buf[off] |= 0x40; /* O_SUP */
-		buf[off] |= 0x8; /* U_SUP */
-		buf[off] |= 0x4; /* S_SUP */
-		buf[off] |= 0x2; /* AN_SUP */
-		buf[off++] |= 0x1; /* AO_SUP */
+		buf[off++] = 0x1; /* AO_SUP */
 		/*
 		 * TARGET PORT GROUP
 		 */
@@ -2027,7 +2022,7 @@ int core_setup_alua(struct se_device *dev, int force_pt)
 			return PTR_ERR(lu_gp_mem);
 
 		alua->alua_type = SPC3_ALUA_EMULATED;
-		alua->alua_state_check = &core_alua_state_check;
+		alua->alua_state_check = &core_alua_state_check_nop;
 		spin_lock(&lu_gp_mem->lu_gp_mem_lock);
 		__core_alua_attach_lu_gp_mem(lu_gp_mem,
 				default_lu_gp);
