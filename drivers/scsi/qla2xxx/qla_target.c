@@ -2968,6 +2968,7 @@ static int qla_tgt_24xx_handle_els(struct scsi_qla_host *vha,
 	return res;
 }
 
+#if 0
 static int qla_tgt_set_data_offset(struct qla_tgt_cmd *cmd, uint32_t offset)
 {
 	struct scatterlist *sg, *sgp, *sg_srr, *sg_srr_start = NULL;
@@ -3061,6 +3062,7 @@ static int qla_tgt_set_data_offset(struct qla_tgt_cmd *cmd, uint32_t offset)
 
 	return 0;
 }
+#endif
 
 static inline int qla_tgt_srr_adjust_data(struct qla_tgt_cmd *cmd,
 	uint32_t srr_rel_offs, int *xmit_type)
@@ -3077,10 +3079,13 @@ static inline int qla_tgt_srr_adjust_data(struct qla_tgt_cmd *cmd,
 		printk(KERN_ERR "qla_target(%d): SRR rel_offs (%d) "
 			"< 0", cmd->vha->vp_idx, rel_offs);
 		res = -1;
-	} else if (rel_offs == cmd->bufflen)
+	} else if (rel_offs == cmd->bufflen) {
 		*xmit_type = QLA_TGT_XMIT_STATUS;
-	else if (rel_offs > 0)
-		res = qla_tgt_set_data_offset(cmd, rel_offs);
+	} else if (rel_offs > 0) {
+		qla_printk(KERN_WARNING, cmd->vha->hw, "rejecting SRR with srr_rel_offs=%d, rel_offs=%d (!= 0)\n",
+			   srr_rel_offs, rel_offs);
+		res = -1;
+	}
 
 	return res;
 }
@@ -3340,6 +3345,9 @@ static void qla_tgt_prepare_srr_imm(struct scsi_qla_host *vha,
 					"corresponding SRR CTIO, deleting IMM "
 					"SRR %p\n", vha->vp_idx, tgt->ctio_srr_id,
 					imm);
+				qla_printk(KERN_INFO, ha, "IMM NTFY SRR "
+					   "offset 0x%x with no matching CTIO w/ SRR status\n",
+					   le32_to_cpu(imm->imm_ntfy.u.isp24.srr_rel_offs));
 				list_del(&imm->srr_list_entry);
 
 				kfree(imm);
