@@ -17,7 +17,7 @@
 #ifndef __TCM_FC_H__
 #define __TCM_FC_H__
 
-#define FT_VERSION "0.3"
+#define FT_VERSION "0.4-rc1"
 
 #define FT_NAMELEN 32		/* length of ASCII WWPNs including pad */
 #define FT_TPG_NAMELEN 32	/* max length of TPG name */
@@ -113,12 +113,10 @@ struct ft_lport_acl {
  * Commands
  */
 struct ft_cmd {
-	u32 lun;                        /* LUN from request */
 	struct ft_sess *sess;		/* session held for cmd */
 	struct fc_seq *seq;		/* sequence in exchange mgr */
 	struct se_cmd se_cmd;		/* Local TCM I/O descriptor */
 	struct fc_frame *req_frame;
-	unsigned char *cdb;		/* pointer to CDB inside frame */
 	u32 write_data_len;		/* data received on writes */
 	struct work_struct work;
 	/* Local sense buffer */

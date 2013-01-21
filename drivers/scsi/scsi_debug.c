@@ -3262,7 +3262,7 @@ static int __init scsi_debug_init(void)
 	unsigned long sz;
 	int host_to_add;
 	int k;
-	int ret;
+	int ret = 0;
 
 	switch (scsi_debug_sector_size) {
 	case  512:
@@ -3854,6 +3854,7 @@ write:
 		errsts = check_readiness(SCpnt, 1, devip);
 		break;
 	case XDWRITEREAD_10:
+xdwrite_read:
 		if (!scsi_bidi_cmnd(SCpnt)) {
 			mk_sense_buffer(devip, ILLEGAL_REQUEST,
 					INVALID_FIELD_IN_CDB, 0);
@@ -3891,6 +3892,10 @@ write:
 				BUG_ON(SCpnt->cmd_len < 32);
 				goto write;
 			}
+		}
+		if (cmd[9] == XDWRITEREAD_32) {
+			printk("Got XDWRITEREAD_32!!!\n");
+			goto xdwrite_read;
 		}
 
 		mk_sense_buffer(devip, ILLEGAL_REQUEST,

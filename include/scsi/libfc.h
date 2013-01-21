@@ -928,6 +928,12 @@ int fc_fc4_register_provider(enum fc_fh_type type, struct fc4_prov *);
 void fc_fc4_deregister_provider(enum fc_fh_type type, struct fc4_prov *);
 
 /*
+ * Register FC-4 provider with libfc.
+ */
+int fc_fc4_register_provider(enum fc_fh_type type, struct fc4_prov *);
+void fc_fc4_deregister_provider(enum fc_fh_type type, struct fc4_prov *);
+
+/*
  * FC_LPORT HELPER FUNCTIONS
  *****************************/
 
@@ -1056,6 +1062,7 @@ int fc_set_mfs(struct fc_lport *, u32 mfs);
 struct fc_lport *libfc_vport_create(struct fc_vport *, int privsize);
 struct fc_lport *fc_vport_id_lookup(struct fc_lport *, u32 port_id);
 int fc_lport_bsg_request(struct fc_bsg_job *);
+void fc_lport_iterate(void (*func)(struct fc_lport *, void *), void *);
 void fc_lport_set_local_id(struct fc_lport *, u32 port_id);
 void fc_lport_iterate(void (*func)(struct fc_lport *, void *), void *);
 
@@ -1109,7 +1116,6 @@ void fc_fill_reply_hdr(struct fc_frame *, const struct fc_frame *,
 		       enum fc_rctl, u32 parm_offset);
 void fc_fill_hdr(struct fc_frame *, const struct fc_frame *,
 		 enum fc_rctl, u32 f_ctl, u16 seq_cnt, u32 parm_offset);
-
 
 /*
  * EXCHANGE MANAGER LAYER

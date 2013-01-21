@@ -29,6 +29,13 @@ config TCM_PSCSI
 	Say Y here to enable the TCM/pSCSI subsystem plugin for non-buffered
 	passthrough access to Linux/SCSI device
 
+config TCM_STGT
+	tristate "TCM/STGT Subsystem Plugin"
+	depends on EXPERIMENTAL
+	select SCSI_TGT
+	help
+	Say Y here to enable the WIP TCM/STGT subsystem plugin for accessing STGT device
+
 source "drivers/target/loopback/Kconfig"
 source "drivers/target/tcm_fc/Kconfig"
 source "drivers/target/iscsi/Kconfig"

@@ -47,6 +47,10 @@ struct target_core_fabric_ops {
 	 * Returning 0 will signal a descriptor has not been released.
 	 */
 	int (*check_stop_free)(struct se_cmd *);
+	/*
+	 * Optional check for active I/O shutdown
+	 */
+	int (*check_release_cmd)(struct se_cmd *);
 	void (*release_cmd)(struct se_cmd *);
 	/*
 	 * Called with spin_lock_bh(struct se_portal_group->session_lock held.
@@ -109,9 +113,12 @@ void	transport_init_se_cmd(struct se_cmd *, struct target_core_fabric_ops *,
 		struct se_session *, u32, int, int, unsigned char *);
 int	transport_lookup_cmd_lun(struct se_cmd *, u32);
 int	transport_generic_allocate_tasks(struct se_cmd *, unsigned char *);
+int	transport_handle_cdb_direct(struct se_cmd *);
 void	target_submit_cmd(struct se_cmd *, struct se_session *, unsigned char *,
 		unsigned char *, u32, u32, int, int, int);
-int	transport_handle_cdb_direct(struct se_cmd *);
+void	target_submit_tmr(struct se_cmd *se_cmd, struct se_session *se_sess,
+		unsigned char *sense, u32 unpacked_lun,
+		void *fabric_tmr_ptr, unsigned char tm_type, int flags);
 int	transport_generic_handle_cdb_map(struct se_cmd *);
 int	transport_generic_handle_data(struct se_cmd *);
 int	transport_generic_map_mem_to_cmd(struct se_cmd *cmd,
@@ -120,6 +127,7 @@ int	transport_generic_new_cmd(struct se_cmd *);
 
 void	transport_generic_process_write(struct se_cmd *);
 
+void	transport_release_cmd(struct se_cmd *);
 void	transport_generic_free_cmd(struct se_cmd *, int);
 
 bool	transport_wait_for_tasks(struct se_cmd *);
@@ -133,7 +141,7 @@ void	target_wait_for_sess_cmds(struct se_session *, int);
 
 int	core_alua_check_nonop_delay(struct se_cmd *);
 
-struct se_tmr_req *core_tmr_alloc_req(struct se_cmd *, void *, u8, gfp_t);
+void	core_tmr_req_init(struct se_cmd *, void *, u8);
 void	core_tmr_release_req(struct se_tmr_req *);
 int	transport_generic_handle_tmr(struct se_cmd *);
 int	transport_lookup_tmr_lun(struct se_cmd *, u32);

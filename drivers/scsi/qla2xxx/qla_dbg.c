@@ -25,6 +25,11 @@
  * | ISP82XX Specific             |       0xb051       |    		|
  * | MultiQ                       |       0xc00b       |		|
  * | Misc                         |       0xd00b       |		|
+ * | Target Mode		  |	  0xe037       |		|
+ * | Target Mode Management	  |	  0xe14e       |		|
+ * | Target Mode SCSI Packets	  |	  0xe20b       |		|
+ * | Target Mode Scatterlists	  |	  0xe30c       |		|
+ * | Target Mode Task Management  |	  0xe409       |		|
  * ----------------------------------------------------------------------
  */
 
@@ -1671,8 +1676,6 @@ ql_dbg(uint32_t level, scsi_qla_host_t *vha, int32_t id, char *msg, ...) {
 	uint32_t len;
 	struct pci_dev *pdev = NULL;
 
-	memset(pbuf, 0, QL_DBG_BUF_LEN);
-
 	va_start(ap, msg);
 
 	if ((level & ql2xextended_error_logging) == level) {
@@ -1719,8 +1722,6 @@ ql_dbg_pci(uint32_t level, struct pci_dev *pdev, int32_t id, char *msg, ...) {
 	if (pdev == NULL)
 		return;
 
-	memset(pbuf, 0, QL_DBG_BUF_LEN);
-
 	va_start(ap, msg);
 
 	if ((level & ql2xextended_error_logging) == level) {
@@ -1757,8 +1758,6 @@ ql_log(uint32_t level, scsi_qla_host_t *vha, int32_t id, char *msg, ...) {
 	va_list ap;
 	uint32_t len;
 	struct pci_dev *pdev = NULL;
-
-	memset(pbuf, 0, QL_DBG_BUF_LEN);
 
 	va_start(ap, msg);
 
@@ -1817,8 +1816,6 @@ ql_log_pci(uint32_t level, struct pci_dev *pdev, int32_t id, char *msg, ...) {
 
 	if (pdev == NULL)
 		return;
-
-	memset(pbuf, 0, QL_DBG_BUF_LEN);
 
 	va_start(ap, msg);
 

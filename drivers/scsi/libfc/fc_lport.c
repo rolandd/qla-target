@@ -860,9 +860,9 @@ out:
  * Locking Note: This function should not be called with the lport
  *		 lock held because it will grab the lock.
  */
-static void fc_lport_recv_els_req(struct fc_lport *lport,
-				  struct fc_frame *fp)
+static void fc_lport_recv_els_req(struct fc_lport *lport, struct fc_frame *fp)
 {
+	struct fc_frame_header *fh = fc_frame_header_get(fp);
 	void (*recv)(struct fc_lport *, struct fc_frame *);
 
 	mutex_lock(&lport->lp_mutex);
@@ -874,7 +874,8 @@ static void fc_lport_recv_els_req(struct fc_lport *lport,
 	 */
 	if (!lport->link_up)
 		fc_frame_free(fp);
-	else {
+	else if (fh->fh_type == FC_TYPE_ELS &&
+             fh->fh_r_ctl == FC_RCTL_ELS_REQ) {
 		/*
 		 * Check opcode.
 		 */
@@ -903,6 +904,10 @@ static void fc_lport_recv_els_req(struct fc_lport *lport,
 		}
 
 		recv(lport, fp);
+	} else {
+		FC_LPORT_DBG(lport, "dropping invalid frame (eof %x)\n",
+				fr_eof(fp));
+			fc_frame_free(fp);
 	}
 	mutex_unlock(&lport->lp_mutex);
 }
@@ -927,8 +932,7 @@ struct fc4_prov fc_lport_els_prov = {
  * Locking Note: This function should not be called with the lport
  *		 lock held because it may grab the lock.
  */
-static void fc_lport_recv_req(struct fc_lport *lport,
-			      struct fc_frame *fp)
+static void fc_lport_recv_req(struct fc_lport *lport, struct fc_frame *fp)
 {
 	struct fc_frame_header *fh = fc_frame_header_get(fp);
 	struct fc_seq *sp = fr_seq(fp);
@@ -941,7 +945,6 @@ static void fc_lport_recv_req(struct fc_lport *lport,
 	 * Only ELSes and FCP target ops should come through here.
 	 * The locking is unfortunate, and a better scheme is being sought.
 	 */
-
 	rcu_read_lock();
 	if (fh->fh_type >= FC_FC4_PROV_SIZE)
 		goto drop;

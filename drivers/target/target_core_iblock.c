@@ -48,6 +48,9 @@
 
 #include "target_core_iblock.h"
 
+#define IBLOCK_MAX_BIO_PER_TASK	 32	/* max # of bios to submit at a time */
+#define IBLOCK_BIO_POOL_SIZE	128
+
 static struct se_subsystem_api iblock_template;
 
 static void iblock_bio_done(struct bio *, int);
@@ -58,51 +61,25 @@ static void iblock_bio_done(struct bio *, int);
  */
 static int iblock_attach_hba(struct se_hba *hba, u32 host_id)
 {
-	struct iblock_hba *ib_host;
-
-	ib_host = kzalloc(sizeof(struct iblock_hba), GFP_KERNEL);
-	if (!ib_host) {
-		pr_err("Unable to allocate memory for"
-				" struct iblock_hba\n");
-		return -ENOMEM;
-	}
-
-	ib_host->iblock_host_id = host_id;
-
-	hba->hba_ptr = ib_host;
-
 	pr_debug("CORE_HBA[%d] - TCM iBlock HBA Driver %s on"
 		" Generic Target Core Stack %s\n", hba->hba_id,
 		IBLOCK_VERSION, TARGET_CORE_MOD_VERSION);
-
-	pr_debug("CORE_HBA[%d] - Attached iBlock HBA: %u to Generic\n",
-		hba->hba_id, ib_host->iblock_host_id);
-
 	return 0;
 }
 
 static void iblock_detach_hba(struct se_hba *hba)
 {
-	struct iblock_hba *ib_host = hba->hba_ptr;
-
-	pr_debug("CORE_HBA[%d] - Detached iBlock HBA: %u from Generic"
-		" Target Core\n", hba->hba_id, ib_host->iblock_host_id);
-
-	kfree(ib_host);
-	hba->hba_ptr = NULL;
 }
 
 static void *iblock_allocate_virtdevice(struct se_hba *hba, const char *name)
 {
 	struct iblock_dev *ib_dev = NULL;
-	struct iblock_hba *ib_host = hba->hba_ptr;
 
 	ib_dev = kzalloc(sizeof(struct iblock_dev), GFP_KERNEL);
 	if (!ib_dev) {
 		pr_err("Unable to allocate struct iblock_dev\n");
 		return NULL;
 	}
-	ib_dev->ibd_host = ib_host;
 
 	pr_debug( "IBLOCK: Allocated ib_dev for %s\n", name);
 
@@ -128,10 +105,8 @@ static struct se_device *iblock_create_virtdevice(
 		return ERR_PTR(ret);
 	}
 	memset(&dev_limits, 0, sizeof(struct se_dev_limits));
-	/*
-	 * These settings need to be made tunable..
-	 */
-	ib_dev->ibd_bio_set = bioset_create(32, 0);
+
+	ib_dev->ibd_bio_set = bioset_create(IBLOCK_BIO_POOL_SIZE, 0);
 	if (!ib_dev->ibd_bio_set) {
 		pr_err("IBLOCK: Unable to create bioset()\n");
 		return ERR_PTR(-ENOMEM);
@@ -232,7 +207,7 @@ iblock_alloc_task(unsigned char *cdb)
 		return NULL;
 	}
 
-	atomic_set(&ib_req->ib_bio_cnt, 0);
+	atomic_set(&ib_req->pending, 1);
 	return &ib_req->ib_task;
 }
 
@@ -513,24 +488,35 @@ iblock_get_bio(struct se_task *task, sector_t lba, u32 sg_num)
 	bio->bi_destructor = iblock_bio_destructor;
 	bio->bi_end_io = &iblock_bio_done;
 	bio->bi_sector = lba;
-	atomic_inc(&ib_req->ib_bio_cnt);
+	atomic_inc(&ib_req->pending);
 
 	pr_debug("Set bio->bi_sector: %llu\n", (unsigned long long)bio->bi_sector);
-	pr_debug("Set ib_req->ib_bio_cnt: %d\n",
-			atomic_read(&ib_req->ib_bio_cnt));
+	pr_debug("Set ib_req->pending: %d\n", atomic_read(&ib_req->pending));
 	return bio;
+}
+
+static void iblock_submit_bios(struct bio_list *list, int rw)
+{
+	struct blk_plug plug;
+	struct bio *bio;
+
+	blk_start_plug(&plug);
+	while ((bio = bio_list_pop(list)))
+		submit_bio(rw, bio);
+	blk_finish_plug(&plug);
 }
 
 static int iblock_do_task(struct se_task *task)
 {
 	struct se_cmd *cmd = task->task_se_cmd;
 	struct se_device *dev = cmd->se_dev;
+	struct iblock_req *ibr = IBLOCK_REQ(task);
 	struct bio *bio;
 	struct bio_list list;
 	struct scatterlist *sg;
 	u32 i, sg_num = task->task_sg_nents;
 	sector_t block_lba;
-	struct blk_plug plug;
+	unsigned bio_cnt;
 	int rw;
 
 	if (task->task_data_direction == DMA_TO_DEVICE) {
@@ -575,6 +561,7 @@ static int iblock_do_task(struct se_task *task)
 
 	bio_list_init(&list);
 	bio_list_add(&list, bio);
+	bio_cnt = 1;
 
 	for_each_sg(task->task_sg, sg, task->task_sg_nents, i) {
 		/*
@@ -584,10 +571,16 @@ static int iblock_do_task(struct se_task *task)
 		 */
 		while (bio_add_page(bio, sg_page(sg), sg->length, sg->offset)
 				!= sg->length) {
+			if (bio_cnt >= IBLOCK_MAX_BIO_PER_TASK) {
+				iblock_submit_bios(&list, rw);
+				bio_cnt = 0;
+			}
+
 			bio = iblock_get_bio(task, block_lba, sg_num);
 			if (!bio)
 				goto fail;
 			bio_list_add(&list, bio);
+			bio_cnt++;
 		}
 
 		/* Always in 512 byte units for Linux/Block */
@@ -595,11 +588,12 @@ static int iblock_do_task(struct se_task *task)
 		sg_num--;
 	}
 
-	blk_start_plug(&plug);
-	while ((bio = bio_list_pop(&list)))
-		submit_bio(rw, bio);
-	blk_finish_plug(&plug);
+	iblock_submit_bios(&list, rw);
 
+	if (atomic_dec_and_test(&ibr->pending)) {
+		transport_complete_task(task,
+				!atomic_read(&ibr->ib_bio_err_cnt));
+	}
 	return 0;
 
 fail:
@@ -651,7 +645,7 @@ static void iblock_bio_done(struct bio *bio, int err)
 
 	bio_put(bio);
 
-	if (!atomic_dec_and_test(&ibr->ib_bio_cnt))
+	if (!atomic_dec_and_test(&ibr->pending))
 		return;
 
 	pr_debug("done[%p] bio: %p task_lba: %llu bio_lba: %llu err=%d\n",

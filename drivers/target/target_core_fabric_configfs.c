@@ -418,7 +418,9 @@ static void target_fabric_drop_mappedlun(
 		config_item_put(df_item);
 	}
 	kfree(lacl_cg->default_groups);
-
+	/*
+	 * struct se_lun_acl memory is released by target_fabric_mappedlun_release()
+	 */
 	config_item_put(item);
 }
 

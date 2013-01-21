@@ -91,11 +91,8 @@ static int core_scsi2_reservation_check(struct se_cmd *cmd, u32 *pr_reg_type)
 	struct se_session *sess = cmd->se_sess;
 	int ret;
 
-	if (!sess)
-		return 0;
-
 	spin_lock(&dev->dev_reservation_lock);
-	if (!dev->dev_reserved_node_acl || !sess) {
+	if (!dev->dev_reserved_node_acl) {
 		spin_unlock(&dev->dev_reservation_lock);
 		return 0;
 	}
@@ -203,14 +200,12 @@ int target_scsi2_reservation_release(struct se_task *task)
 	struct se_portal_group *tpg = sess->se_tpg;
 	int ret = 0;
 
-	if (!sess || !tpg)
-		goto out;
 	if (target_check_scsi2_reservation_conflict(cmd, &ret))
 		goto out;
 
 	ret = 0;
 	spin_lock(&dev->dev_reservation_lock);
-	if (!dev->dev_reserved_node_acl || !sess)
+	if (!dev->dev_reserved_node_acl)
 		goto out_unlock;
 
 	if (dev->dev_reserved_node_acl != sess->se_node_acl)
@@ -253,12 +248,6 @@ int target_scsi2_reservation_reserve(struct se_task *task)
 		ret = -EINVAL;
 		goto out;
 	}
-	/*
-	 * This is currently the case for target_core_mod passthrough struct se_cmd
-	 * ops
-	 */
-	if (!sess || !tpg)
-		goto out;
 	if (target_check_scsi2_reservation_conflict(cmd, &ret))
 		goto out;
 
@@ -582,9 +571,6 @@ static int core_scsi3_pr_reservation_check(
 	struct se_device *dev = cmd->se_dev;
 	struct se_session *sess = cmd->se_sess;
 	int ret;
-
-	if (!sess)
-		return 0;
 	/*
 	 * A legacy SPC-2 reservation is being held.
 	 */
@@ -1487,7 +1473,7 @@ static int core_scsi3_decode_spec_i_port(
 	struct se_dev_entry *dest_se_deve = NULL, *local_se_deve;
 	struct t10_pr_registration *dest_pr_reg, *local_pr_reg, *pr_reg_e;
 	struct t10_pr_registration *pr_reg_tmp, *pr_reg_tmp_safe;
-	struct list_head tid_dest_list;
+	LIST_HEAD(tid_dest_list);
 	struct pr_transport_id_holder *tidh_new, *tidh, *tidh_tmp;
 	struct target_core_fabric_ops *tmp_tf_ops;
 	unsigned char *buf;
@@ -1498,7 +1484,6 @@ static int core_scsi3_decode_spec_i_port(
 	u32 dest_rtpi = 0;
 
 	memset(dest_iport, 0, 64);
-	INIT_LIST_HEAD(&tid_dest_list);
 
 	local_se_deve = &se_sess->se_node_acl->device_list[cmd->orig_fe_lun];
 	/*
@@ -2994,7 +2979,7 @@ static int core_scsi3_pro_preempt(
 	struct se_dev_entry *se_deve;
 	struct se_node_acl *pr_reg_nacl;
 	struct se_session *se_sess = cmd->se_sess;
-	struct list_head preempt_and_abort_list;
+	LIST_HEAD(preempt_and_abort_list);
 	struct t10_pr_registration *pr_reg, *pr_reg_tmp, *pr_reg_n, *pr_res_holder;
 	struct t10_reservation *pr_tmpl = &dev->se_sub_dev->t10_pr;
 	u32 pr_res_mapped_lun = 0;
@@ -3027,7 +3012,6 @@ static int core_scsi3_pro_preempt(
 		cmd->scsi_sense_reason = TCM_INVALID_PARAMETER_LIST;
 		return -EINVAL;
 	}
-	INIT_LIST_HEAD(&preempt_and_abort_list);
 
 	spin_lock(&dev->dev_reservation_lock);
 	pr_res_holder = dev->dev_pr_res_holder;

@@ -546,8 +546,7 @@ static struct target_core_fabric_ops ft_fabric_ops = {
 	.set_fabric_sense_len =		ft_set_fabric_sense_len,
 	.is_state_remove =		ft_is_state_remove,
 	/*
-	 * Setup function pointers for generic logic in
-	 * target_core_fabric_configfs.c
+	 * Setup function pointers for generic logic in target_core_fabric_configfs.c
 	 */
 	.fabric_make_wwn =		&ft_add_lport,
 	.fabric_drop_wwn =		&ft_del_lport,

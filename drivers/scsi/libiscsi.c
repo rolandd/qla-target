@@ -153,7 +153,7 @@ void iscsi_prep_data_out_pdu(struct iscsi_task *task, struct iscsi_r2t_info *r2t
 	hdr->datasn = cpu_to_be32(r2t->datasn);
 	r2t->datasn++;
 	hdr->opcode = ISCSI_OP_SCSI_DATA_OUT;
-	memcpy(hdr->lun, task->lun, sizeof(hdr->lun));
+	hdr->lun = task->lun;
 	hdr->itt = task->hdr_itt;
 	hdr->exp_statsn = r2t->exp_statsn;
 	hdr->offset = cpu_to_be32(r2t->data_offset + r2t->sent);
@@ -280,7 +280,7 @@ static int iscsi_check_tmf_restrictions(struct iscsi_task *task, int opcode)
 		/*
 		 * Allow PDUs for unrelated LUNs
 		 */
-		hdr_lun = scsilun_to_int((struct scsi_lun *)tmf->lun);
+		hdr_lun = scsilun_to_int(&tmf->lun);
 		if (hdr_lun != task->sc->device->lun)
 			return 0;
 		/* fall through */
@@ -373,8 +373,8 @@ static int iscsi_prep_scsi_cmd_pdu(struct iscsi_task *task)
 		return rc;
 	hdr->opcode = ISCSI_OP_SCSI_CMD;
 	hdr->flags = ISCSI_ATTR_SIMPLE;
-	int_to_scsilun(sc->device->lun, (struct scsi_lun *)hdr->lun);
-	memcpy(task->lun, hdr->lun, sizeof(task->lun));
+	int_to_scsilun(sc->device->lun, &hdr->lun);
+	task->lun = hdr->lun;
 	hdr->exp_statsn = cpu_to_be32(conn->exp_statsn);
 	cmd_len = sc->cmd_len;
 	if (cmd_len < ISCSI_CDB_SIZE)
@@ -800,14 +800,14 @@ int iscsi_conn_send_pdu(struct iscsi_cls_conn *cls_conn, struct iscsi_hdr *hdr,
 EXPORT_SYMBOL_GPL(iscsi_conn_send_pdu);
 
 /**
- * iscsi_cmd_rsp - SCSI Command Response processing
+ * iscsi_scsi_cmd_rsp - SCSI Command Response processing
  * @conn: iscsi connection
  * @hdr: iscsi header
  * @task: scsi command task
  * @data: cmd data buffer
  * @datalen: len of buffer
  *
- * iscsi_cmd_rsp sets up the scsi_cmnd fields based on the PDU and
+ * iscsi_scsi_cmd_rsp sets up the scsi_cmnd fields based on the PDU and
  * then completes the command and task.
  **/
 static void iscsi_scsi_cmd_rsp(struct iscsi_conn *conn, struct iscsi_hdr *hdr,
@@ -952,7 +952,7 @@ static void iscsi_send_nopout(struct iscsi_conn *conn, struct iscsi_nopin *rhdr)
 	hdr.flags = ISCSI_FLAG_CMD_FINAL;
 
 	if (rhdr) {
-		memcpy(hdr.lun, rhdr->lun, 8);
+		hdr.lun = rhdr->lun;
 		hdr.ttt = rhdr->ttt;
 		hdr.itt = RESERVED_ITT;
 	} else
@@ -2076,7 +2076,7 @@ static void iscsi_prep_abort_task_pdu(struct iscsi_task *task,
 	hdr->opcode = ISCSI_OP_SCSI_TMFUNC | ISCSI_OP_IMMEDIATE;
 	hdr->flags = ISCSI_TM_FUNC_ABORT_TASK & ISCSI_FLAG_TM_FUNC_MASK;
 	hdr->flags |= ISCSI_FLAG_CMD_FINAL;
-	memcpy(hdr->lun, task->lun, sizeof(hdr->lun));
+	hdr->lun = task->lun;
 	hdr->rtt = task->hdr_itt;
 	hdr->refcmdsn = task->cmdsn;
 }
@@ -2217,7 +2217,7 @@ static void iscsi_prep_lun_reset_pdu(struct scsi_cmnd *sc, struct iscsi_tm *hdr)
 	hdr->opcode = ISCSI_OP_SCSI_TMFUNC | ISCSI_OP_IMMEDIATE;
 	hdr->flags = ISCSI_TM_FUNC_LOGICAL_UNIT_RESET & ISCSI_FLAG_TM_FUNC_MASK;
 	hdr->flags |= ISCSI_FLAG_CMD_FINAL;
-	int_to_scsilun(sc->device->lun, (struct scsi_lun *)hdr->lun);
+	int_to_scsilun(sc->device->lun, &hdr->lun);
 	hdr->rtt = RESERVED_ITT;
 }
 

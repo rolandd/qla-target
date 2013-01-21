@@ -1005,8 +1005,8 @@ static void fc_rport_prli_resp(struct fc_seq *sp, struct fc_frame *fp,
 	op = fc_frame_payload_op(fp);
 	if (op == ELS_LS_ACC) {
 		pp = fc_frame_payload_get(fp, sizeof(*pp));
-		if (!pp)
-			goto out;
+        if (!pp)
+            goto out;
 
 		resp_code = (pp->spp.spp_flags & FC_SPP_RESP_MASK);
 		FC_RPORT_DBG(rdata, "PRLI spp_flags = 0x%x\n",
@@ -1034,6 +1034,13 @@ static void fc_rport_prli_resp(struct fc_seq *sp, struct fc_frame *fp,
 			prov->prli(rdata, pp->prli.prli_spp_len,
 				   &pp->spp, &temp_spp);
 		}
+
+        prov = fc_passive_prov[FC_TYPE_FCP];
+        if (prov) {
+            memset(&temp_spp, 0, sizeof(temp_spp));
+            prov->prli(rdata, pp->prli.prli_spp_len,
+                    &pp->spp, &temp_spp);
+        }
 
 		rdata->supported_classes = FC_COS_CLASS3;
 		if (fcp_parm & FCP_SPPF_INIT_FCN)
@@ -1106,7 +1113,7 @@ static void fc_rport_enter_prli(struct fc_rport_priv *rdata)
 		       FC_FC_FIRST_SEQ | FC_FC_END_SEQ | FC_FC_SEQ_INIT, 0);
 
 	if (!lport->tt.exch_seq_send(lport, fp, fc_rport_prli_resp,
-				    NULL, rdata, 2 * lport->r_a_tov))
+				     NULL, rdata, 2 * lport->r_a_tov))
 		fc_rport_error_retry(rdata, NULL);
 	else
 		kref_get(&rdata->kref);
