@@ -1345,10 +1345,9 @@ struct t10_alua_tg_pt_gp *core_alua_allocate_tg_pt_gp(
 	atomic_set(&tg_pt_gp->tg_pt_gp_alua_access_state,
 		ALUA_ACCESS_STATE_ACTIVE_OPTMIZED);
 	/*
-	 * Enable both explict and implict ALUA support by default
+	 * Enable only implict ALUA support by default
 	 */
-	tg_pt_gp->tg_pt_gp_alua_access_type =
-			TPGS_EXPLICT_ALUA | TPGS_IMPLICT_ALUA;
+	tg_pt_gp->tg_pt_gp_alua_access_type = TPGS_IMPLICT_ALUA;
 	/*
 	 * Set the default Active/NonOptimized Delay in milliseconds
 	 */
