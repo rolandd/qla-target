@@ -27,6 +27,8 @@
  *
  ******************************************************************************/
 
+#define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
+
 #include <linux/string.h>
 #include <linux/parser.h>
 #include <linux/timer.h>
@@ -497,7 +499,8 @@ iblock_get_bio(struct se_task *task, sector_t lba, u32 sg_num)
 
 	bio = bio_alloc_bioset(GFP_NOIO, sg_num, ib_dev->ibd_bio_set);
 	if (!bio) {
-		pr_err("Unable to allocate memory for bio\n");
+		pr_err("Unable to allocate memory for bio (sg_num %d, dev %s)\n",
+		       sg_num, ib_dev->ibd_udev_path);
 		return NULL;
 	}
 
