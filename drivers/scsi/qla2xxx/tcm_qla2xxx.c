@@ -1349,7 +1349,7 @@ static struct qla_tgt_sess *tcm_qla2xxx_find_sess_by_s_id(
 
 	nacl = container_of(se_nacl, struct tcm_qla2xxx_nacl, se_node_acl);
 	if (!nacl->qla_tgt_sess) {
-		pr_err("Unable to locate struct qla_tgt_sess\n");
+		WARN_ON_ONCE("Unable to locate struct qla_tgt_sess\n");
 		return NULL;
 	}
 
@@ -1480,7 +1480,7 @@ static struct qla_tgt_sess *tcm_qla2xxx_find_sess_by_loop_id(
 	nacl = container_of(se_nacl, struct tcm_qla2xxx_nacl, se_node_acl);
 
 	if (!nacl->qla_tgt_sess) {
-		pr_err("Unable to locate struct qla_tgt_sess\n");
+		WARN_ON_ONCE("Unable to locate struct qla_tgt_sess\n");
 		return NULL;
 	}
 
