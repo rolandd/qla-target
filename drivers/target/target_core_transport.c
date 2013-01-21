@@ -1873,15 +1873,6 @@ int transport_generic_handle_data(
 	 */
 	if (!in_interrupt() && signal_pending(current))
 		return -EPERM;
-	/*
-	 * If the received CDB has aleady been ABORTED by the generic
-	 * target engine, we now call transport_check_aborted_status()
-	 * to queue any delated TASK_ABORTED status for the received CDB to the
-	 * fabric module as we are expecting no further incoming DATA OUT
-	 * sequences at this point.
-	 */
-	if (transport_check_aborted_status(cmd, 1) != 0)
-		return 0;
 
 	transport_add_cmd_to_queue(cmd, TRANSPORT_PROCESS_WRITE, false);
 	return 0;
@@ -4974,7 +4965,17 @@ get_cmd:
 			}
 			break;
 		case TRANSPORT_PROCESS_WRITE:
-			transport_generic_process_write(cmd);
+			/*
+			 * If the received CDB has aleady been ABORTED
+			 * by the generic target engine, we now call
+			 * transport_check_aborted_status() to queue
+			 * any delated TASK_ABORTED status for the
+			 * received CDB to the fabric module as we are
+			 * expecting no further incoming DATA OUT
+			 * sequences at this point.
+			 */
+			if (!transport_check_aborted_status(cmd, 1))
+				transport_generic_process_write(cmd);
 			break;
 		case TRANSPORT_PROCESS_TMR:
 			transport_generic_do_tmr(cmd);
