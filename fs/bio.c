@@ -705,7 +705,7 @@ static struct bio_map_data *bio_alloc_map_data(int nr_segs, int iov_count,
 {
 	struct bio_map_data *bmd;
 
-	if (iov_count > UIO_MAXIOV)
+	if (iov_count > 8192)
 		return NULL;
 
 	bmd = kmalloc(sizeof(*bmd), gfp_mask);
