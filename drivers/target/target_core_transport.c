@@ -4246,9 +4246,10 @@ void target_wait_for_sess_cmds(
 				&se_sess->sess_wait_list, se_cmd_list) {
 		list_del(&se_cmd->se_cmd_list);
 
-		pr_info("Waiting for se_cmd: %p t_state: %d, transport state: 0x%x, fabric state: %d\n",
+		pr_info("Waiting for se_cmd: %p t_state: %d, transport state: 0x%x, fabric state: %d, kref:%d\n",
 			se_cmd, se_cmd->t_state, se_cmd->transport_state,
-			se_cmd->se_tfo->get_cmd_state(se_cmd));
+			se_cmd->se_tfo->get_cmd_state(se_cmd),
+			atomic_read(&se_cmd->cmd_kref.refcount));
 		if (se_cmd->se_tfo->dump_cmd)
 			se_cmd->se_tfo->dump_cmd(se_cmd);
 
