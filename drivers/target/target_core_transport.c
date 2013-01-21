@@ -227,17 +227,19 @@ void transport_subsystem_check_init(void)
 	if (ret != 0)
 		pr_err("Unable to load target_core_iblock\n");
 
-	ret = request_module("target_core_file");
-	if (ret != 0)
-		pr_err("Unable to load target_core_file\n");
+	if (0) {
+		ret = request_module("target_core_file");
+		if (ret != 0)
+			pr_err("Unable to load target_core_file\n");
 
-	ret = request_module("target_core_pscsi");
-	if (ret != 0)
-		pr_err("Unable to load target_core_pscsi\n");
+		ret = request_module("target_core_pscsi");
+		if (ret != 0)
+			pr_err("Unable to load target_core_pscsi\n");
 
-	ret = request_module("target_core_stgt");
-	if (ret != 0)
-		pr_err("Unable to load target_core_stgt\n");
+		ret = request_module("target_core_stgt");
+		if (ret != 0)
+			pr_err("Unable to load target_core_stgt\n");
+	}
 
 	sub_api_initialized = 1;
 	return;
