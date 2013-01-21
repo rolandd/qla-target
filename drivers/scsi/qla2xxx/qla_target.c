@@ -2212,8 +2212,7 @@ static int __qla_tgt_send_term_exchange(struct scsi_qla_host *vha, struct qla_tg
 
 	ctio24 = (ctio7_to_24xx_t *)pkt;
 	ctio24->entry_type = CTIO_TYPE7;
-	if (cmd == NULL)
-		ctio24->nport_handle = CTIO7_NHANDLE_UNRECOGNIZED;
+	ctio24->nport_handle = cmd ? cmd->loop_id : CTIO7_NHANDLE_UNRECOGNIZED;
 	ctio24->timeout = __constant_cpu_to_le16(QLA_TGT_TIMEOUT);
 	ctio24->vp_index = vha->vp_idx;
 	ctio24->initiator_id[0] = atio->u.isp24.fcp_hdr.s_id[2];
@@ -2223,7 +2222,8 @@ static int __qla_tgt_send_term_exchange(struct scsi_qla_host *vha, struct qla_tg
 	ctio24->u.status1.flags = (atio->u.isp24.attr << 9) | __constant_cpu_to_le16(
 		CTIO7_FLAGS_STATUS_MODE_1 | CTIO7_FLAGS_TERMINATE);
 	ctio24->u.status1.ox_id = swab16(atio->u.isp24.fcp_hdr.ox_id);
-	pr_info("Terminate CTIO exch addr %x ox_id %x\n",
+	pr_info("Terminate CTIO cmd %p loop_id %x exch addr %x ox_id %x\n",
+		cmd, cmd ? cmd->loop_id : CTIO7_NHANDLE_UNRECOGNIZED,
 		ctio24->exchange_addr, ctio24->u.status1.ox_id);
 
 	/* Most likely, it isn't needed */
