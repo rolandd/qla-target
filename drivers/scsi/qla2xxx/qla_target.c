@@ -1228,8 +1228,27 @@ static int __qla_tgt_24xx_handle_abts(struct scsi_qla_host *vha,
 	abts_recv_from_24xx_t *abts, struct qla_tgt_sess *sess)
 {
 	struct qla_hw_data *ha = vha->hw;
+	struct se_session *se_sess = sess->se_sess;
 	struct qla_tgt_mgmt_cmd *mcmd;
+	struct se_cmd *se_cmd;
+	u32 lun = 0;
 	int rc;
+
+	spin_lock(&se_sess->sess_cmd_lock);
+	list_for_each_entry(se_cmd, &se_sess->sess_cmd_list, se_cmd_list) {
+		struct qla_tgt_cmd *cmd =
+			container_of(se_cmd, struct qla_tgt_cmd, se_cmd);
+		if (cmd->tag == abts->exchange_addr_to_abort) {
+			lun = cmd->unpacked_lun;
+			break;
+		}
+	}
+	spin_unlock(&se_sess->sess_cmd_lock);
+	if (!lun) {
+		pr_err("unable to find cmd on sess_cmd_list for tag 0x%x\n",
+		       abts->exchange_addr_to_abort);
+		return -ENOENT;
+	}
 
 	ql_dbg(ql_dbg_tgt_mgt, vha, 0xe112, "qla_target(%d): task abort (tag=%d)\n",
 		vha->vp_idx, abts->exchange_addr_to_abort);
@@ -1237,7 +1256,7 @@ static int __qla_tgt_24xx_handle_abts(struct scsi_qla_host *vha,
 	mcmd = mempool_alloc(qla_tgt_mgmt_cmd_mempool, GFP_ATOMIC);
 	if (mcmd == NULL) {
 		printk(KERN_ERR "qla_target(%d): %s: Allocation of ABORT cmd failed",
-			vha->vp_idx, __func__);
+		       vha->vp_idx, __func__);
 		return -ENOMEM;
 	}
 	memset(mcmd, 0, sizeof(*mcmd));
@@ -1245,8 +1264,8 @@ static int __qla_tgt_24xx_handle_abts(struct scsi_qla_host *vha,
 	mcmd->sess = sess;
 	memcpy(&mcmd->orig_iocb.abts, abts, sizeof(mcmd->orig_iocb.abts));
 
-	rc = ha->tgt_ops->handle_tmr(mcmd, 0, TMR_ABORT_TASK,
-				abts->exchange_addr_to_abort);
+	rc = ha->tgt_ops->handle_tmr(mcmd, lun, TMR_ABORT_TASK,
+				     abts->exchange_addr_to_abort);
 	if (rc != 0) {
 		printk(KERN_ERR "qla_target(%d):  tgt_ops->handle_tmr()"
 				" failed: %d", vha->vp_idx, rc);
@@ -1308,7 +1327,6 @@ static void qla_tgt_24xx_handle_abts(struct scsi_qla_host *vha,
 		return;
 	}
 
-#if 0
 	rc = __qla_tgt_24xx_handle_abts(vha, abts, sess);
 	if (rc != 0) {
 		printk(KERN_ERR "qla_target(%d): __qla_tgt_24xx_handle_abts() failed: %d\n",
@@ -1316,19 +1334,6 @@ static void qla_tgt_24xx_handle_abts(struct scsi_qla_host *vha,
 		qla_tgt_24xx_send_abts_resp(vha, abts, FCP_TMF_REJECTED, false);
 		return;
 	}
-#else
-	/*
-	 *__qla_tgt_24xx_handle_abts() never works because we pass a
-	 * bogus LUN 0 into the ->handle_tmr() method, so don't bother.
-	 */
-	pr_info("ABTS received  exch addr to abort: %08x s_id %x:%x:%x param %04x\n",
-		abts->exchange_addr_to_abort,
-		abts->fcp_hdr_le.s_id[2],
-		abts->fcp_hdr_le.s_id[1],
-		abts->fcp_hdr_le.s_id[0],
-		le32_to_cpu(abts->fcp_hdr_le.parameter));
-	qla_tgt_24xx_send_abts_resp(vha, abts, FCP_TMF_REJECTED, false);
-#endif
 }
 
 /*
