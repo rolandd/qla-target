@@ -1290,7 +1290,10 @@ static int do_end_io(struct multipath *m, struct request *clone,
 	if (!error && !clone->errors)
 		return 0;	/* I/O complete */
 
-	if (error == -EOPNOTSUPP || error == -EREMOTEIO || error == -EILSEQ)
+        // For this kind of errors do not mark the path as failed,
+        // and return the error directly to the user.
+        // Note: reservation conflicts will return EBADE (marco)
+	if (error == -EOPNOTSUPP || error == -EREMOTEIO || error == -EBADE || error == -EILSEQ)
 		return error;
 
 	if (mpio->pgpath)
@@ -1301,9 +1304,6 @@ static int do_end_io(struct multipath *m, struct request *clone,
 		if (!m->queue_if_no_path) {
 			if (!__must_push_back(m))
 				r = -EIO;
-		} else {
-			if (error == -EBADE)
-				r = error;
 		}
 	}
 	spin_unlock_irqrestore(&m->lock, flags);
