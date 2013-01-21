@@ -31,7 +31,7 @@
 #include <target/target_core_base.h>
 #include <target/target_core_backend.h>
 #include <target/target_core_fabric.h>
-
+#include "target_core_pr.h"
 #include "target_core_internal.h"
 #include "target_core_ua.h"
 
@@ -868,6 +868,11 @@ target_modesense_control(struct se_device *dev, u8 pc, unsigned char *p)
 	 * through the selection of appropriate ommands and task attributes.
 	 */
 	p[3] = (dev->se_sub_dev->se_dev_attrib.emulate_rest_reord == 1) ? 0x00 : 0x10;
+
+	/* For now disable Unit Attentions (set NUAR): */
+	if (target_core_offload_pr)
+		p[3] |= 0x08;
+
 	/*
 	 * From spc4r17, section 7.4.6 Control mode Page
 	 *
