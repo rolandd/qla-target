@@ -7,7 +7,7 @@
 #include <linux/virtio_blk.h>
 #include <linux/scatterlist.h>
 
-#define PART_BITS 4
+#define PART_BITS 5
 
 static int major, index;
 
