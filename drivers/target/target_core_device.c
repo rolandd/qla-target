@@ -83,10 +83,10 @@ int transport_lookup_cmd_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 		    (deve->lun_flags & TRANSPORT_LUNFLAGS_READ_ONLY)) {
 			se_cmd->scsi_sense_reason = TCM_WRITE_PROTECTED;
 			se_cmd->se_cmd_flags |= SCF_SCSI_CDB_EXCEPTION;
-			pr_err("TARGET_CORE[%s]: Detected WRITE_PROTECTED LUN"
-				" Access for 0x%08x\n",
-				se_cmd->se_tfo->get_fabric_name(),
-				unpacked_lun);
+			pr_err_ratelimited("TARGET_CORE[%s]: Detected WRITE_PROTECTED LUN"
+					   " Access for 0x%08x\n",
+					   se_cmd->se_tfo->get_fabric_name(),
+					   unpacked_lun);
 			spin_unlock_irqrestore(&se_sess->se_node_acl->device_list_lock, flags);
 			return -EACCES;
 		}
