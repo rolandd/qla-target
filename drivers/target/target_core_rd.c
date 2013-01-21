@@ -518,7 +518,7 @@ static ssize_t rd_show_configfs_dev_params(
 
 static u32 rd_get_device_rev(struct se_device *dev)
 {
-	return SCSI_SPC_2; /* Returns SPC-3 in Initiator Data */
+	return SCSI_SPC_3; /* Return SPC-4 in Initiator Data */
 }
 
 static u32 rd_get_device_type(struct se_device *dev)
