@@ -637,6 +637,7 @@ static void qla_tgt_del_sess_work_fn(struct delayed_work *work)
 
 			spin_unlock_irqrestore(&ha->hardware_lock, flags);
 			cancel = qla_tgt_check_fcport_exist(vha, sess);
+			spin_lock_irqsave(&ha->hardware_lock, flags);
 
 			if (cancel) {
 				if (sess->deleted) {
@@ -644,7 +645,6 @@ static void qla_tgt_del_sess_work_fn(struct delayed_work *work)
 					 * sess was again deleted while we were
 					 * discovering it
 					 */
-					spin_lock_irqsave(&ha->hardware_lock, flags);
 					continue;
 				}
 
@@ -664,8 +664,6 @@ static void qla_tgt_del_sess_work_fn(struct delayed_work *work)
 				ha->tgt_ops->shutdown_sess(sess);
 				ha->tgt_ops->put_sess(sess);
 			}
-
-			spin_lock_irqsave(&ha->hardware_lock, flags);
 		} else {
 			schedule_delayed_work(&tgt->sess_del_work,
 				jiffies - sess->expires);
@@ -845,9 +843,10 @@ void qla_tgt_fc_port_added(struct scsi_qla_host *vha, fc_port_t *fcport)
 			 sess->loop_id);
 		sess->local = 0;
 	}
-	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
 	ha->tgt_ops->put_sess(sess);
+
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 }
 
 void qla_tgt_fc_port_deleted(struct scsi_qla_host *vha, fc_port_t *fcport)
@@ -2679,7 +2678,9 @@ static void qla_tgt_do_work(struct work_struct *work)
 	/*
 	 * Drop extra session reference from qla_tgt_handle_cmd_for_atio*(
 	 */
+	spin_lock_irqsave(&ha->hardware_lock, flags);
 	ha->tgt_ops->put_sess(sess);
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 	return;
 
 out_term:
@@ -2689,9 +2690,9 @@ out_term:
 	 */
 	spin_lock_irqsave(&ha->hardware_lock, flags);
 	qla_tgt_send_term_exchange(vha, NULL, &cmd->atio, 1);
-	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 	if (sess)
 		ha->tgt_ops->put_sess(sess);
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 }
 
 /* ha->hardware_lock supposed to be held on entry */
@@ -4089,17 +4090,18 @@ static void qla_tgt_abort_work(struct qla_tgt *tgt,
 	rc = __qla_tgt_24xx_handle_abts(vha, &prm->abts, sess);
 	if (rc != 0)
 		goto out_term;
-	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
 	if (sess)
 		ha->tgt_ops->put_sess(sess);
+
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 	return;
 
 out_term:
 	qla_tgt_24xx_send_abts_resp(vha, &prm->abts, FCP_TMF_REJECTED, false);
-	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 	if (sess)
 		ha->tgt_ops->put_sess(sess);
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 }
 
 static void qla_tgt_tmr_work(struct qla_tgt *tgt,
@@ -4148,17 +4150,18 @@ static void qla_tgt_tmr_work(struct qla_tgt *tgt,
 	rc = qla_tgt_issue_task_mgmt(sess, unpacked_lun, fn, iocb, 0);
 	if (rc != 0)
 		goto out_term;
-	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
 	if (sess)
 		ha->tgt_ops->put_sess(sess);
+
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 	return;
 
 out_term:
 	qla_tgt_send_term_exchange(vha, NULL, &prm->tm_iocb2, 1);
-	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 	if (sess)
 		ha->tgt_ops->put_sess(sess);
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 }
 
 static void qla_tgt_sess_work_fn(struct work_struct *work)

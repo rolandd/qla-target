@@ -180,7 +180,7 @@ int iscsi_check_for_session_reinstatement(struct iscsi_conn *conn)
 	if (sess->session_state == TARG_SESS_STATE_FAILED) {
 		spin_unlock_bh(&sess->conn_lock);
 		iscsit_dec_session_usage_count(sess);
-		target_put_session(sess->se_sess);
+		generic_target_put_session(sess->se_sess);
 		return 0;
 	}
 	spin_unlock_bh(&sess->conn_lock);
@@ -188,7 +188,7 @@ int iscsi_check_for_session_reinstatement(struct iscsi_conn *conn)
 	iscsit_stop_session(sess, 1, 1);
 	iscsit_dec_session_usage_count(sess);
 
-	target_put_session(sess->se_sess);
+	generic_target_put_session(sess->se_sess);
 	return 0;
 }
 

@@ -4101,7 +4101,7 @@ int iscsit_close_connection(
 	if (!atomic_read(&sess->session_reinstatement) &&
 	     atomic_read(&sess->session_fall_back_to_erl0)) {
 		spin_unlock_bh(&sess->conn_lock);
-		target_put_session(sess->se_sess);
+		generic_target_put_session(sess->se_sess);
 
 		return 0;
 	} else if (atomic_read(&sess->session_logout)) {
@@ -4222,7 +4222,7 @@ static void iscsit_logout_post_handler_closesession(
 	iscsit_dec_conn_usage_count(conn);
 	iscsit_stop_session(sess, 1, 1);
 	iscsit_dec_session_usage_count(sess);
-	target_put_session(sess->se_sess);
+	generic_target_put_session(sess->se_sess);
 }
 
 static void iscsit_logout_post_handler_samecid(
@@ -4388,7 +4388,7 @@ int iscsit_free_session(struct iscsi_session *sess)
 	} else
 		spin_unlock_bh(&sess->conn_lock);
 
-	target_put_session(sess->se_sess);
+	generic_target_put_session(sess->se_sess);
 	return 0;
 }
 

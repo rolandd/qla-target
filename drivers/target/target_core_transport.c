@@ -318,7 +318,7 @@ void transport_register_session(
 }
 EXPORT_SYMBOL(transport_register_session);
 
-static void target_release_session(struct kref *kref)
+void target_release_session(struct kref *kref)
 {
 	struct se_session *se_sess = container_of(kref,
 			struct se_session, sess_kref);
@@ -333,11 +333,14 @@ void target_get_session(struct se_session *se_sess)
 }
 EXPORT_SYMBOL(target_get_session);
 
-int target_put_session(struct se_session *se_sess)
+void generic_target_put_session(struct se_session *se_sess)
 {
-	return kref_put(&se_sess->sess_kref, target_release_session);
+	if (se_sess->se_tpg->se_tpg_tfo->put_session)
+		se_sess->se_tpg->se_tpg_tfo->put_session(se_sess);
+	else
+		kref_put(&se_sess->sess_kref, target_release_session);
 }
-EXPORT_SYMBOL(target_put_session);
+EXPORT_SYMBOL(generic_target_put_session);
 
 static void target_complete_nacl(struct kref *kref)
 {

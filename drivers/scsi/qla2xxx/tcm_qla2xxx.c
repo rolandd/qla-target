@@ -931,14 +931,39 @@ static void tcm_qla2xxx_clear_nacl_from_fcport_map(struct qla_tgt_sess *sess)
 			       nacl->nport_id);
 }
 
+static void tcm_qla2xxx_release_session(struct kref *kref)
+{
+	struct se_session *se_sess = container_of(kref,
+			struct se_session, sess_kref);
+
+	qla_tgt_unreg_sess(se_sess->fabric_sess_ptr);
+}
+
+static void __tcm_qla2xxx_put_session(struct se_session *se_sess)
+{
+	kref_put(&se_sess->sess_kref, tcm_qla2xxx_release_session);
+}
+
+static void tcm_qla2xxx_put_session(struct se_session *se_sess)
+{
+	struct qla_tgt_sess *sess = se_sess->fabric_sess_ptr;
+	struct qla_hw_data *ha = sess->vha->hw;
+	unsigned long flags;
+
+	spin_lock_irqsave(&ha->hardware_lock, flags);
+	__tcm_qla2xxx_put_session(se_sess);
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
+}
+
 static void tcm_qla2xxx_put_sess(struct qla_tgt_sess *sess)
 {
-	target_put_session(sess->se_sess);
+	__tcm_qla2xxx_put_session(sess->se_sess);
 }
 
 static void tcm_qla2xxx_shutdown_sess(struct qla_tgt_sess *sess)
 {
-	tcm_qla2xxx_shutdown_session(sess->se_sess);
+	sess->tearing_down = 1;
+	target_splice_sess_cmd_list(sess->se_sess);
 }
 
 static struct se_node_acl *tcm_qla2xxx_make_nodeacl(
@@ -1847,6 +1872,7 @@ static struct target_core_fabric_ops tcm_qla2xxx_ops = {
 	.new_cmd_map			= NULL,
 	.check_stop_free		= tcm_qla2xxx_check_stop_free,
 	.release_cmd			= tcm_qla2xxx_release_cmd,
+	.put_session			= tcm_qla2xxx_put_session,
 	.shutdown_session		= tcm_qla2xxx_shutdown_session,
 	.close_session			= tcm_qla2xxx_close_session,
 	.stop_session			= tcm_qla2xxx_stop_session,

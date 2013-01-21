@@ -52,6 +52,7 @@ struct target_core_fabric_ops {
 	 */
 	int (*check_release_cmd)(struct se_cmd *);
 	void (*release_cmd)(struct se_cmd *);
+	void (*put_session)(struct se_session *se_sess);
 	/*
 	 * Called with spin_lock_bh(struct se_portal_group->session_lock held.
 	 */
@@ -106,7 +107,7 @@ void	__transport_register_session(struct se_portal_group *,
 void	transport_register_session(struct se_portal_group *,
 		struct se_node_acl *, struct se_session *, void *);
 void	target_get_session(struct se_session *);
-int	target_put_session(struct se_session *);
+void	generic_target_put_session(struct se_session *);
 void	target_session_i_t_nexus(struct se_cmd *, const u8 **, size_t *,
 				 const u8 **, size_t *);
 void	transport_free_session(struct se_session *);

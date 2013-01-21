@@ -510,10 +510,10 @@ int core_tpg_del_initiator_node_acl(
 		list_del(&sess->sess_acl_list);
 
 		rc = tpg->se_tpg_tfo->shutdown_session(sess);
-		target_put_session(sess);
+		generic_target_put_session(sess);
 		if (!rc)
 			continue;
-		target_put_session(sess);
+		generic_target_put_session(sess);
 	}
 	target_put_nacl(acl);
 	/*
