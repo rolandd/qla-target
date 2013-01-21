@@ -98,7 +98,7 @@
 #define MPT2SAS_SAS_QUEUE_DEPTH		254
 #define MPT2SAS_RAID_QUEUE_DEPTH	128
 
-#define MPT_NAME_LENGTH			32	/* generic length of strings */
+#define MPT_NAME_LENGTH			40	/* generic length of strings */
 #define MPT_STRING_LENGTH		64
 
 #define MPT_MAX_CALLBACKS		16
@@ -937,6 +937,9 @@ struct MPT2SAS_ADAPTER {
 	struct delayed_work debug_timer_work;
 	atomic_t debug_count_resets;
 	int debug_bad_time;
+
+	/* Name used to request IRQ */
+	char		irqname[MPT_NAME_LENGTH];
 };
 
 typedef u8 (*MPT_CALLBACK)(struct MPT2SAS_ADAPTER *ioc, u16 smid, u8 msix_index,

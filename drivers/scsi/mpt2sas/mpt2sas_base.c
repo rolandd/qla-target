@@ -1205,8 +1205,10 @@ _base_enable_msix(struct MPT2SAS_ADAPTER *ioc)
 		goto try_ioapic;
 	}
 
+	snprintf(ioc->irqname, MPT_NAME_LENGTH, "%s%d@pci:%s",
+		MPT2SAS_DRIVER_NAME, ioc->id, pci_name(ioc->pdev));
 	r = request_irq(entries.vector, _base_interrupt, IRQF_SHARED,
-	    ioc->name, ioc);
+	    ioc->irqname, ioc);
 	if (r) {
 		dfailprintk(ioc, printk(MPT2SAS_INFO_FMT "unable to allocate "
 		    "interrupt %d !!!\n", ioc->name, entries.vector));
