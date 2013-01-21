@@ -697,10 +697,21 @@ static int iscsit_map_iovec(
 	unsigned int page_off;
 
 	/*
-	 * We know each entry in t_data_sg contains a page.
+	 * Need to walk the sg list to get to data_offset, because
+	 * ps_bdrv might give us a set of chained lists, so we can't
+	 * just compute an index directly.
+	 *
+	 * We do assume for now that every actual entry in the sg list
+	 * is page-sized, since ps_bdrv goes to pains to make that true.
 	 */
-	sg = &cmd->se_cmd.t_data_sg[data_offset / PAGE_SIZE];
-	page_off = (data_offset % PAGE_SIZE);
+	sg = cmd->se_cmd.t_data_sg;
+	while (data_offset >= PAGE_SIZE) {
+		WARN_ONCE(sg->length != PAGE_SIZE, "SG entry with length %d\n", sg->length);
+		sg = sg_next(sg);
+		data_offset -= PAGE_SIZE;
+	}
+
+	page_off = data_offset;
 
 	cmd->first_data_sg = sg;
 	cmd->first_data_sg_off = page_off;
