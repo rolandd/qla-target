@@ -317,6 +317,11 @@ static void iblock_ps_endpr(struct ps_ioreq *iop, void *cmd_ptr, int error)
 			WARN(1, "iblock_ps_endpr called without execute_task");
 	}
 
+	pr_debug("%s cdb=%d scsi_status=%d error=%d data_length=%d "
+		 "residual_count=%d se_cmd_flags=0x%x\n", __func__,
+		 cmd->t_task_cdb[0], cmd->scsi_status, error,
+		 cmd->data_length, cmd->residual_count, cmd->se_cmd_flags);
+
 	if (error < 0) {
 		unsigned long flags;
 
