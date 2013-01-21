@@ -55,6 +55,9 @@
 #include "target_core_pr.h"
 #include "target_core_ua.h"
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/target.h>
+
 static int sub_api_initialized;
 
 static struct workqueue_struct *target_completion_wq;
@@ -2022,6 +2025,8 @@ void transport_generic_request_failure(struct se_cmd *cmd)
 				cmd->orig_fe_lun, 0x2C,
 				ASCQ_2CH_PREVIOUS_RESERVATION_CONFLICT_STATUS);
 
+		/* XXXTRACE tracepoint for reservation conflict */
+
 		ret = cmd->se_tfo->queue_status(cmd);
 		if (ret == -EAGAIN || ret == -ENOMEM)
 			goto queue_full;
@@ -2634,6 +2639,9 @@ static int transport_generic_cmd_sequencer(
 	u32 sectors = 0, size = 0, pr_reg_type = 0;
 	u16 service_action;
 	u8 alua_ascq = 0;
+
+	trace_target_sequencer_start(cmd);
+
 	/*
 	 * Check for an existing UNIT ATTENTION condition
 	 */
@@ -3531,6 +3539,8 @@ static void target_complete_ok_work(struct work_struct *work)
 		}
 		/* Fall through for DMA_TO_DEVICE */
 	case DMA_NONE:
+		/* XXXTRACE tracepoint for successful completion */
+
 		ret = cmd->se_tfo->queue_status(cmd);
 		if (ret == -EAGAIN || ret == -ENOMEM)
 			goto queue_full;
@@ -4792,6 +4802,8 @@ int transport_send_check_condition_and_sense(
 	cmd->scsi_sense_length  = TRANSPORT_SENSE_BUFFER;
 
 after_reason:
+	/* XXXTRACE tracepoint for check condition */
+
 	return cmd->se_tfo->queue_status(cmd);
 }
 EXPORT_SYMBOL(transport_send_check_condition_and_sense);
