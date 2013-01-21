@@ -2405,26 +2405,6 @@ static struct qla_tgt_cmd *qla_tgt_ctio_to_cmd(struct scsi_qla_host *vha, uint32
 	return cmd;
 }
 
-void qla_tgt_dump_error_ctio(struct scsi_qla_host *vha, uint32_t handle, void *ctio_p)
-{
-	struct qla_hw_data *ha = vha->hw;
-	struct qla_tgt_cmd *cmd;
-	ctio7_from_24xx_t *ctio = ctio_p;
-
-	qla_printk(KERN_ERR, ha, "CTIO error entry status 0x%x handle 0x%x\n",
-		   ctio->entry_status, ctio->handle);
-
-	print_hex_dump(KERN_WARNING, "  ", DUMP_PREFIX_OFFSET, 16, 1, ctio_p, 64, 0);
-
-	cmd = qla_tgt_ctio_to_cmd(vha, handle, ctio_p);
-
-	if (cmd) {
-		qla_printk(KERN_ERR, ha, "ATIO for cmd %p (CTIO handle 0x%x)\n",
-			   cmd, ctio->handle);
-		print_hex_dump(KERN_WARNING, "  ", DUMP_PREFIX_OFFSET, 16, 1, &cmd->atio, 64, 0);
-	}
-}
-
 /*
  * ha->hardware_lock supposed to be held on entry. Might drop it, then reaquire
  */
@@ -2532,6 +2512,37 @@ static void qla_tgt_do_ctio_completion(struct scsi_qla_host *vha, uint32_t handl
 	}
 
 	ha->tgt_ops->free_cmd(cmd);
+}
+
+void qla_tgt_dump_error_ctio(struct scsi_qla_host *vha, uint32_t handle, void *ctio_p)
+{
+	struct qla_hw_data *ha = vha->hw;
+	struct qla_tgt_cmd *cmd = NULL;
+	ctio7_from_24xx_t *ctio = ctio_p;
+	uint32_t index;
+
+	qla_printk(KERN_ERR, ha, "CTIO error entry status 0x%x handle 0x%x\n",
+		   ctio->entry_status, ctio->handle);
+
+	print_hex_dump(KERN_WARNING, "  ", DUMP_PREFIX_OFFSET, 16, 1, ctio_p, 64, 0);
+
+	/*
+	 * Can't use qla_tgt_ctio_to_cmd() because that clears out the
+	 * cmd table after returning it to us.  Since this is hacky
+	 * debugging code, just open-code the equivalent here.
+	 */
+	index = handle & ~(CTIO_COMPLETION_HANDLE_MARK | CTIO_INTERMEDIATE_HANDLE_MARK);
+	if (index != QLA_TGT_NULL_HANDLE && index != QLA_TGT_SKIP_HANDLE &&
+	    index <= MAX_OUTSTANDING_COMMANDS)
+		cmd = ha->cmds[index - 1];
+
+	if (cmd) {
+		qla_printk(KERN_ERR, ha, "ATIO for cmd %p (CTIO handle 0x%x)\n",
+			   cmd, ctio->handle);
+		print_hex_dump(KERN_WARNING, "  ", DUMP_PREFIX_OFFSET, 16, 1, &cmd->atio, 64, 0);
+	}
+
+	qla_tgt_do_ctio_completion(vha, handle, 0xff, ctio_p);
 }
 
 /* ha->hardware_lock supposed to be held on entry */
