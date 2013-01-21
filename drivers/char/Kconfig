@@ -608,6 +608,13 @@ config RAMOOPS
 	  This enables panic and oops messages to be logged to a circular
 	  buffer in RAM where it can be read back at some later point.
 
+config BUFOOPS
+	tristate "Log panic/oops to a buffer mappable to userspace"
+	help
+	  This enables panic and oops messages to be logged to a circular
+	  buffer in RAM where it can be mapped into userspace.  In particular,
+	  this buffer can be exported to a remote system via RDMA.
+
 config MSM_SMD_PKT
 	bool "Enable device interface for some SMD packet ports"
 	default n
