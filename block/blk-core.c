@@ -1730,6 +1730,9 @@ int blk_insert_cloned_request(struct request_queue *q, struct request *rq)
 		return -EIO;
 #endif
 
+	if (unlikely(test_bit(QUEUE_FLAG_DEAD, &q->queue_flags)))
+		return -EIO;
+
 	spin_lock_irqsave(q->queue_lock, flags);
 
 	/*
