@@ -1948,8 +1948,8 @@ int iscsit_logout_closesession(struct iscsi_cmd *cmd, struct iscsi_conn *conn)
 	struct iscsi_conn *conn_p;
 	struct iscsi_session *sess = conn->sess;
 
-	pr_debug("Received logout request CLOSESESSION on CID: %hu"
-		" for SID: %u.\n", conn->cid, conn->sess->sid);
+	pr_info("Received iSCSI logout request CLOSESESSION from %s on CID: %hu"
+		" for SID: %u.\n", sess->sess_ops->InitiatorName, conn->cid, conn->sess->sid);
 
 	atomic_set(&sess->session_logout, 1);
 	atomic_set(&conn->conn_logout_remove, 1);
@@ -1978,8 +1978,8 @@ int iscsit_logout_closeconnection(struct iscsi_cmd *cmd, struct iscsi_conn *conn
 	struct iscsi_conn *l_conn;
 	struct iscsi_session *sess = conn->sess;
 
-	pr_debug("Received logout request CLOSECONNECTION for CID:"
-		" %hu on CID: %hu.\n", cmd->logout_cid, conn->cid);
+	pr_info("Received iSCSI logout request CLOSECONNECTION from %s for CID:"
+		" %hu on CID: %hu.\n", sess->sess_ops->InitiatorName, cmd->logout_cid, conn->cid);
 
 	/*
 	 * A Logout Request with a CLOSECONNECTION reason code for a CID
@@ -3952,8 +3952,8 @@ int iscsit_close_connection(
 	int conn_logout = (conn->conn_state == TARG_CONN_STATE_IN_LOGOUT);
 	struct iscsi_session	*sess = conn->sess;
 
-	pr_debug("Closing iSCSI connection CID %hu on SID:"
-		" %u\n", conn->cid, sess->sid);
+	pr_info("Closing iSCSI connection CID %hu on SID: %u\n",
+		conn->cid, sess->sid);
 	/*
 	 * Always up conn_logout_comp just in case the RX Thread is sleeping
 	 * and the logout response never got sent because the connection
@@ -4161,6 +4161,9 @@ int iscsit_close_session(struct iscsi_session *sess)
 {
 	struct iscsi_portal_group *tpg = ISCSI_TPG_S(sess);
 	struct se_portal_group *se_tpg = &tpg->tpg_se_tpg;
+
+	pr_info("Closing iSCSI session SID %u to %s\n",
+		sess->sid, sess->sess_ops->InitiatorName);
 
 	if (atomic_read(&sess->nconn)) {
 		pr_err("%d connection(s) still exist for iSCSI session"

@@ -616,8 +616,10 @@ static int iscsi_post_login_handler(
 			stop_timer = 1;
 		}
 
-		pr_debug("iSCSI Login successful on CID: %hu from %s to"
-			" %s:%hu,%hu\n", conn->cid, conn->login_ip,
+		pr_info("%s/%d: iSCSI connection (nonzero tsih) #%d from %s SID: %u successful on CID: %hu from %s to %s:%hu,%hu\n",
+			current->comm, task_pid_nr(current),
+			atomic_read(&sess->nconn) + 1, sess->sess_ops->InitiatorName,
+			sess->sid, conn->cid, conn->login_ip,
 			conn->local_ip, conn->local_port, tpg->tpgt);
 
 		list_add_tail(&conn->conn_list, &sess->sess_conn_list);
@@ -659,10 +661,6 @@ static int iscsi_post_login_handler(
 	pr_debug("Moving to TARG_SESS_STATE_LOGGED_IN.\n");
 	sess->session_state = TARG_SESS_STATE_LOGGED_IN;
 
-	pr_debug("iSCSI Login successful on CID: %hu from %s to %s:%hu,%hu\n",
-		conn->cid, conn->login_ip, conn->local_ip, conn->local_port,
-		tpg->tpgt);
-
 	spin_lock_bh(&sess->conn_lock);
 	list_add_tail(&conn->conn_list, &sess->sess_conn_list);
 	atomic_inc(&sess->nconn);
@@ -676,6 +674,12 @@ static int iscsi_post_login_handler(
 		sess->sid = tpg->sid++;
 	pr_debug("Established iSCSI session from node: %s\n",
 			sess->sess_ops->InitiatorName);
+
+	pr_info("%s/%d: iSCSI connection (zero tsih) #%d from %s SID: %u successful on CID: %hu from %s to %s:%hu,%hu\n",
+		current->comm, task_pid_nr(current),
+		atomic_read(&sess->nconn), sess->sess_ops->InitiatorName,
+		sess->sid, conn->cid, conn->login_ip,
+		conn->local_ip, conn->local_port, tpg->tpgt);
 
 	tpg->nsessions++;
 	if (tpg->tpg_tiqn)
@@ -1075,10 +1079,10 @@ static int __iscsi_target_login_thread(struct iscsi_np *np)
 
 	conn->network_transport = np->np_network_transport;
 
-	pr_debug("Received iSCSI login request from %s on %s Network"
-			" Portal %s:%hu\n", conn->login_ip,
+	pr_info("Received %s iSCSI login request from %s Network Portal %s:%hu\n",
 		(conn->network_transport == ISCSI_TCP) ? "TCP" : "SCTP",
-			conn->local_ip, conn->local_port);
+		conn->login_ip,
+		conn->local_ip, conn->local_port);
 
 	pr_debug("Moving to TARG_CONN_STATE_IN_LOGIN.\n");
 	conn->conn_state	= TARG_CONN_STATE_IN_LOGIN;
@@ -1160,7 +1164,8 @@ static int __iscsi_target_login_thread(struct iscsi_np *np)
 	return 1;
 
 new_sess_out:
-	pr_err("iSCSI Login negotiation failed.\n");
+	pr_err("%s/%d: iSCSI Login negotiation failed.\n",
+	       current->comm, task_pid_nr(current));
 	iscsit_collect_login_stats(conn, ISCSI_STATUS_CLS_INITIATOR_ERR,
 				  ISCSI_LOGIN_STATUS_INIT_ERR);
 	if (!zero_tsih || !conn->sess)
@@ -1248,6 +1253,9 @@ int iscsi_target_login_thread(void *arg)
 {
 	struct iscsi_np *np = arg;
 	int ret;
+
+	pr_info("%s/%d: iSCSI login thread started for Network Portal %s:%hu\n",
+		current->comm, task_pid_nr(current), np->np_ip, np->np_port);
 
 	allow_signal(SIGINT);
 
