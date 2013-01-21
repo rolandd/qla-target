@@ -835,6 +835,8 @@ struct qla_tgt_cmd {
 	unsigned int write_data_transferred:1;
 
 	struct scatterlist *sg;	/* cmd data buffer SG vector */
+	struct scatterlist *last_seg;
+	u32 last_seg_resid;
 	int sg_cnt;		/* SG segments count */
 	int bufflen;		/* cmd buffer length */
 	int offset;

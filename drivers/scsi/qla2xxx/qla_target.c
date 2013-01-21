@@ -1449,9 +1449,26 @@ static int qla_tgt_pci_map_calc_cnt(struct qla_tgt_prm *prm)
 
 	BUG_ON(cmd->sg_cnt == 0);
 
+	if (unlikely(cmd->se_cmd.se_cmd_flags & SCF_UNDERFLOW_BIT)) {
+		struct scatterlist *sg;
+		u32 len = cmd->bufflen;
+		int i;
+
+		for_each_sg(cmd->sg, sg, cmd->sg_cnt, i) {
+			if (sg->length >= len) {
+				cmd->sg_cnt = i + 1;
+				cmd->last_seg = sg;
+				cmd->last_seg_resid = sg->length - len;
+				sg->length = len;
+				break;
+			}
+			len -= sg->length;
+		}
+	}
+
 	prm->sg = (struct scatterlist *)cmd->sg;
 	prm->seg_cnt = pci_map_sg(prm->tgt->ha->pdev, cmd->sg,
-				cmd->sg_cnt, cmd->dma_data_direction);
+				  cmd->sg_cnt, cmd->dma_data_direction);
 	if (unlikely(prm->seg_cnt == 0))
 		goto out_err;
 
@@ -1481,6 +1498,8 @@ static inline void qla_tgt_unmap_sg(struct scsi_qla_host *vha, struct qla_tgt_cm
 
 	BUG_ON(!cmd->sg_mapped);
 	pci_unmap_sg(ha->pdev, cmd->sg, cmd->sg_cnt, cmd->dma_data_direction);
+	if (cmd->last_seg_resid)
+		cmd->last_seg->length += cmd->last_seg_resid;
 	cmd->sg_mapped = 0;
 }
 
@@ -2052,9 +2071,6 @@ int qla_tgt_xmit_response(struct qla_tgt_cmd *cmd, int xmit_type, uint8_t scsi_s
 			ctio7_to_24xx_t *ctio =
 				(ctio7_to_24xx_t *)qla_tgt_get_req_pkt(vha);
 
-			ql_dbg(ql_dbg_tgt, vha, 0xe019, "Building additional"
-					" status packet\n");
-
 			memcpy(ctio, pkt, sizeof(*ctio));
 			ctio->entry_count = 1;
 			ctio->dseg_count = 0;
@@ -2067,7 +2083,9 @@ int qla_tgt_xmit_response(struct qla_tgt_cmd *cmd, int xmit_type, uint8_t scsi_s
 					CTIO7_FLAGS_DONT_RET_CTIO);
 			qla_tgt_24xx_init_ctio_to_isp((ctio7_to_24xx_t *)ctio,
 							&prm);
-			printk("Status CTIO7: %p\n", ctio);
+			ql_dbg(ql_dbg_tgt, vha, 0xe019,
+			       "Building additional status packet at %p\n",
+			       ctio);
 		}
 	} else
 		qla_tgt_24xx_init_ctio_to_isp(pkt, &prm);
