@@ -6953,6 +6953,12 @@ _firmware_event_work(struct work_struct *work)
 		return;
 	}
 
+	/* debugging: try to print something for each fw_event_work */
+	if (printk_ratelimit()) {
+		printk("%s starting fw_event_work (type %x)\n", ioc->name,
+			fw_event->event);
+	}
+
 	if (fw_event->event == MPT2SAS_RESCAN_AFTER_HOST_RESET) {
 		_scsih_fw_event_free(ioc, fw_event);
 		spin_lock_irqsave(&ioc->ioc_reset_in_progress_lock, flags);
