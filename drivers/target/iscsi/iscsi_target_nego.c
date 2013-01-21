@@ -330,7 +330,6 @@ static int iscsi_target_check_first_request(
 static int iscsi_target_do_tx_login_io(struct iscsi_conn *conn, struct iscsi_login *login)
 {
 	u32 padding = 0;
-	struct iscsi_session *sess = conn->sess;
 	struct iscsi_login_rsp *login_rsp;
 
 	login_rsp = (struct iscsi_login_rsp *) login->rsp;
@@ -342,7 +341,7 @@ static int iscsi_target_do_tx_login_io(struct iscsi_conn *conn, struct iscsi_log
 	login_rsp->itt			= cpu_to_be32(login->init_task_tag);
 	login_rsp->statsn		= cpu_to_be32(conn->stat_sn++);
 	login_rsp->exp_cmdsn		= cpu_to_be32(conn->sess->exp_cmd_sn);
-	login_rsp->max_cmdsn		= cpu_to_be32(conn->sess->max_cmd_sn);
+	login_rsp->max_cmdsn		= cpu_to_be32((u32) atomic_read(&conn->sess->max_cmd_sn));
 
 	pr_debug("Sending Login Response, Flags: 0x%02x, ITT: 0x%08x,"
 		" ExpCmdSN; 0x%08x, MaxCmdSN: 0x%08x, StatSN: 0x%08x, Length:"
@@ -363,10 +362,8 @@ static int iscsi_target_do_tx_login_io(struct iscsi_conn *conn, struct iscsi_log
 	login_rsp->tsih			= be16_to_cpu(login_rsp->tsih);
 	login_rsp->itt			= be32_to_cpu(login_rsp->itt);
 	login_rsp->statsn		= be32_to_cpu(login_rsp->statsn);
-	mutex_lock(&sess->cmdsn_mutex);
-	login_rsp->exp_cmdsn		= be32_to_cpu(sess->exp_cmd_sn);
-	login_rsp->max_cmdsn		= be32_to_cpu(sess->max_cmd_sn);
-	mutex_unlock(&sess->cmdsn_mutex);
+	login_rsp->exp_cmdsn		= be32_to_cpu(login_rsp->exp_cmdsn);
+	login_rsp->max_cmdsn		= be32_to_cpu(login_rsp->max_cmdsn);
 
 	return 0;
 }

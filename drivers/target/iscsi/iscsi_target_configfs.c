@@ -693,8 +693,8 @@ static ssize_t lio_target_nacl_show_info(
 		rb += sprintf(page+rb, " 0x%08x   0x%08x   0x%08x   0x%08x"
 				"   0x%08x   0x%08x\n",
 			sess->cmdsn_window,
-			(sess->max_cmd_sn - sess->exp_cmd_sn) + 1,
-			sess->exp_cmd_sn, sess->max_cmd_sn,
+			((u32) atomic_read(&sess->max_cmd_sn) - sess->exp_cmd_sn) + 1,
+			sess->exp_cmd_sn, (u32) atomic_read(&sess->max_cmd_sn),
 			sess->init_task_tag, sess->targ_xfer_tag);
 		rb += sprintf(page+rb, "----------------------[iSCSI"
 				" Connections]-------------------------\n");

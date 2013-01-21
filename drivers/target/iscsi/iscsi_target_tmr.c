@@ -50,7 +50,7 @@ u8 iscsit_tmr_abort_task(
 		pr_err("Unable to locate RefTaskTag: 0x%08x on CID:"
 			" %hu.\n", hdr->rtt, conn->cid);
 		return ((hdr->refcmdsn >= conn->sess->exp_cmd_sn) &&
-			(hdr->refcmdsn <= conn->sess->max_cmd_sn)) ?
+			(hdr->refcmdsn <= (u32) atomic_read(&conn->sess->max_cmd_sn))) ?
 			ISCSI_TMF_RSP_COMPLETE : ISCSI_TMF_RSP_NO_TASK;
 	}
 	if (ref_cmd->cmd_sn != hdr->refcmdsn) {
