@@ -921,6 +921,11 @@ int tcm_qla2xxx_put_sess(struct qla_tgt_sess *sess)
 	return target_put_session(sess->se_sess);
 }
 
+void tcm_qla2xxx_shutdown_sess(struct qla_tgt_sess *sess)
+{
+	tcm_qla2xxx_shutdown_session(sess->se_sess);
+}
+
 static struct se_node_acl *tcm_qla2xxx_make_nodeacl(
 	struct se_portal_group *se_tpg,
 	struct config_group *group,
@@ -1603,6 +1608,7 @@ static struct qla_tgt_func_tmpl tcm_qla2xxx_template = {
 	.find_sess_by_loop_id	= tcm_qla2xxx_find_sess_by_loop_id,
 	.clear_nacl_from_fcport_map = tcm_qla2xxx_clear_nacl_from_fcport_map,
 	.put_sess		= tcm_qla2xxx_put_sess,
+	.shutdown_sess		= tcm_qla2xxx_shutdown_sess,
 };
 
 static int tcm_qla2xxx_init_lport(struct tcm_qla2xxx_lport *lport)

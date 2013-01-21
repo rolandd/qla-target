@@ -688,6 +688,7 @@ static void qla_tgt_del_sess_work_fn(struct delayed_work *work)
 				ql_dbg(ql_dbg_tgt_mgt, vha, 0xe107, "Timeout: sess %p"
 					" about to be deleted\n", sess);
 				printk("Releasing qla_tgt_del_sess_work_fn w/o hardware_lock >>>>>>>>>>>>\n");
+				ha->tgt_ops->shutdown_sess(sess);
 				ha->tgt_ops->put_sess(sess);
 			}
 
