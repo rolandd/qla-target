@@ -522,6 +522,7 @@ struct se_tmr_req {
 };
 
 struct se_cmd {
+	unsigned int original_cpu; /* which cpu did this command arrive on? */
 	/* SAM response code being sent to initiator */
 	u8			scsi_status;
 	u8			scsi_asc;

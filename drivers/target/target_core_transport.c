@@ -37,6 +37,7 @@
 #include <linux/in.h>
 #include <linux/cdrom.h>
 #include <linux/module.h>
+#include <linux/cpumask.h>
 #include <asm/unaligned.h>
 #include <net/sock.h>
 #include <net/tcp.h>
@@ -753,7 +754,11 @@ void transport_complete_task(struct se_task *task, int success)
 	cmd->transport_state |= (CMD_T_COMPLETE | CMD_T_ACTIVE);
 	spin_unlock_irqrestore(&cmd->t_state_lock, flags);
 
-	queue_work(target_completion_wq, &cmd->work);
+	if (WARN_ON_ONCE(cmd->original_cpu > nr_cpu_ids))
+		queue_work(target_completion_wq, &cmd->work);
+	else
+		queue_work_on(cmd->original_cpu, target_completion_wq,
+				&cmd->work);
 }
 EXPORT_SYMBOL(transport_complete_task);
 

@@ -151,6 +151,8 @@ int	transport_generic_handle_tmr(struct se_cmd *);
 void	transport_generic_request_failure(struct se_cmd *);
 int	transport_lookup_tmr_lun(struct se_cmd *, u32);
 
+unsigned int transport_buddy_cpu(void);
+
 struct se_node_acl *core_tpg_check_initiator_node_acl(struct se_portal_group *,
 		unsigned char *);
 void	core_tpg_clear_object_luns(struct se_portal_group *);

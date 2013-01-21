@@ -2682,6 +2682,7 @@ static int qla_tgt_handle_cmd_for_atio(struct scsi_qla_host *vha,
 
 	cmd->recv_time = local_clock();
 
+	cmd->se_cmd.original_cpu = transport_buddy_cpu();
 	INIT_LIST_HEAD(&cmd->cmd_list);
 
 	memcpy(&cmd->atio, atio, sizeof(*atio));

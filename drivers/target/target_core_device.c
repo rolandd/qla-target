@@ -235,6 +235,24 @@ int transport_lookup_tmr_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 }
 EXPORT_SYMBOL(transport_lookup_tmr_lun);
 
+unsigned int transport_buddy_cpu(void)
+{
+	unsigned int cpu = smp_processor_id();
+
+	if (nr_cpu_ids != 24 && nr_cpu_ids != 32)
+		return cpu;
+	switch (cpu) {
+		case  3: return  5;
+		case  5: return  3;
+		case  4: return  6;
+		case  6: return  4;
+		case  9: return 11;
+		case 11: return  9;
+	}
+	return cpu; /* shouldn't ever happen */
+}
+EXPORT_SYMBOL(transport_buddy_cpu);
+
 /*
  * This function is called from core_scsi3_emulate_pro_register_and_move()
  * and core_scsi3_decode_spec_i_port(), and will increment &deve->pr_ref_count
