@@ -2368,11 +2368,13 @@ _base_allocate_memory_pools(struct MPT2SAS_ADAPTER *ioc,  int sleep_flag)
 	    ioc->scsiio_depth));
 
 	/* loop till the allocation succeeds */
+	ioc->chain_lookup = NULL;
 	do {
 		sz = ioc->chain_depth * sizeof(struct chain_tracker);
 		ioc->chain_pages = get_order(sz);
-		ioc->chain_lookup = (struct chain_tracker *)__get_free_pages(
-		    GFP_KERNEL, ioc->chain_pages);
+		if (ioc->chain_pages < MAX_ORDER)
+			ioc->chain_lookup = (void *)__get_free_pages(GFP_KERNEL,
+					ioc->chain_pages);
 		if (ioc->chain_lookup == NULL)
 			ioc->chain_depth -= 100;
 	} while (ioc->chain_lookup == NULL);
