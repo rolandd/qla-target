@@ -101,7 +101,8 @@ void core_tmr_abort_task(
 	spin_lock_irqsave(&se_sess->sess_cmd_lock, flags);
 	list_for_each_entry_safe(se_cmd, tmp_cmd,
 			&se_sess->sess_cmd_list, se_cmd_list) {
-
+		if (se_cmd->cmd_wait_set)
+			continue;
 		if (dev != se_cmd->se_dev)
 			continue;
 		ref_tag = se_cmd->se_tfo->get_task_tag(se_cmd);
