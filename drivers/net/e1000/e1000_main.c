@@ -278,7 +278,7 @@ static int e1000_request_irq(struct e1000_adapter *adapter)
 {
 	struct net_device *netdev = adapter->netdev;
 	irq_handler_t handler = e1000_intr;
-	int irq_flags = IRQF_SHARED;
+	int irq_flags = IRQF_SHARED | IRQF_SAMPLE_RANDOM;
 	int err;
 
 	err = request_irq(adapter->pdev->irq, handler, irq_flags, netdev->name,

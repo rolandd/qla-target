@@ -1108,7 +1108,7 @@ static int bnx2x_req_msix_irqs(struct bnx2x *bp)
 {
 	int i, rc, offset = 1;
 
-	rc = request_irq(bp->msix_table[0].vector, bnx2x_msix_sp_int, 0,
+	rc = request_irq(bp->msix_table[0].vector, bnx2x_msix_sp_int, IRQF_SAMPLE_RANDOM,
 			 bp->dev->name, bp->dev);
 	if (rc) {
 		BNX2X_ERR("request sp irq failed\n");
@@ -1124,7 +1124,7 @@ static int bnx2x_req_msix_irqs(struct bnx2x *bp)
 			 bp->dev->name, i);
 
 		rc = request_irq(bp->msix_table[offset].vector,
-				 bnx2x_msix_fp_int, 0, fp->name, fp);
+				 bnx2x_msix_fp_int, IRQF_SAMPLE_RANDOM, fp->name, fp);
 		if (rc) {
 			BNX2X_ERR("request fp #%d irq failed  rc %d\n", i, rc);
 			bnx2x_free_msix_irqs(bp);
@@ -1170,7 +1170,7 @@ static int bnx2x_req_irq(struct bnx2x *bp)
 	else
 		flags = IRQF_SHARED;
 
-	rc = request_irq(bp->pdev->irq, bnx2x_interrupt, flags,
+	rc = request_irq(bp->pdev->irq, bnx2x_interrupt, flags | IRQF_SAMPLE_RANDOM,
 			 bp->dev->name, bp->dev);
 	if (!rc)
 		bnx2x_fp(bp, 0, state) = BNX2X_FP_STATE_IRQ;

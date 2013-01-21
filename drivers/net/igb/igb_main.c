@@ -909,7 +909,7 @@ static int igb_request_msix(struct igb_adapter *adapter)
 	int i, err = 0, vector = 0;
 
 	err = request_irq(adapter->msix_entries[vector].vector,
-	                  igb_msix_other, 0, netdev->name, adapter);
+	                  igb_msix_other, IRQF_SAMPLE_RANDOM, netdev->name, adapter);
 	if (err)
 		goto out;
 	vector++;
@@ -932,7 +932,7 @@ static int igb_request_msix(struct igb_adapter *adapter)
 			sprintf(q_vector->name, "%s-unused", netdev->name);
 
 		err = request_irq(adapter->msix_entries[vector].vector,
-		                  igb_msix_ring, 0, q_vector->name,
+		                  igb_msix_ring, IRQF_SAMPLE_RANDOM, q_vector->name,
 		                  q_vector);
 		if (err)
 			goto out;
@@ -1244,7 +1244,7 @@ static int igb_request_irq(struct igb_adapter *adapter)
 	}
 
 	if (adapter->flags & IGB_FLAG_HAS_MSI) {
-		err = request_irq(adapter->pdev->irq, igb_intr_msi, 0,
+		err = request_irq(adapter->pdev->irq, igb_intr_msi, IRQF_SAMPLE_RANDOM,
 				  netdev->name, adapter);
 		if (!err)
 			goto request_done;
@@ -1254,7 +1254,7 @@ static int igb_request_irq(struct igb_adapter *adapter)
 		adapter->flags &= ~IGB_FLAG_HAS_MSI;
 	}
 
-	err = request_irq(adapter->pdev->irq, igb_intr, IRQF_SHARED,
+	err = request_irq(adapter->pdev->irq, igb_intr, IRQF_SHARED | IRQF_SAMPLE_RANDOM,
 			  netdev->name, adapter);
 
 	if (err)

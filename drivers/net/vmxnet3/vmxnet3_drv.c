@@ -1710,7 +1710,7 @@ vmxnet3_request_irqs(struct vmxnet3_adapter *adapter)
 					adapter->netdev->name, vector);
 				err = request_irq(
 					      intr->msix_entries[vector].vector,
-					      vmxnet3_msix_tx, 0,
+					      vmxnet3_msix_tx, IRQF_SAMPLE_RANDOM,
 					      adapter->tx_queue[i].name,
 					      &adapter->tx_queue[i]);
 			} else {
@@ -1749,7 +1749,7 @@ vmxnet3_request_irqs(struct vmxnet3_adapter *adapter)
 				sprintf(adapter->rx_queue[i].name, "%s-rxtx-%d",
 					adapter->netdev->name, vector);
 			err = request_irq(intr->msix_entries[vector].vector,
-					  vmxnet3_msix_rx, 0,
+					  vmxnet3_msix_rx, IRQF_SAMPLE_RANDOM,
 					  adapter->rx_queue[i].name,
 					  &(adapter->rx_queue[i]));
 			if (err) {
@@ -1765,19 +1765,19 @@ vmxnet3_request_irqs(struct vmxnet3_adapter *adapter)
 		sprintf(intr->event_msi_vector_name, "%s-event-%d",
 			adapter->netdev->name, vector);
 		err = request_irq(intr->msix_entries[vector].vector,
-				  vmxnet3_msix_event, 0,
+				  vmxnet3_msix_event, IRQF_SAMPLE_RANDOM,
 				  intr->event_msi_vector_name, adapter->netdev);
 		intr->event_intr_idx = vector;
 
 	} else if (intr->type == VMXNET3_IT_MSI) {
 		adapter->num_rx_queues = 1;
-		err = request_irq(adapter->pdev->irq, vmxnet3_intr, 0,
+		err = request_irq(adapter->pdev->irq, vmxnet3_intr, IRQF_SAMPLE_RANDOM,
 				  adapter->netdev->name, adapter->netdev);
 	} else {
 #endif
 		adapter->num_rx_queues = 1;
 		err = request_irq(adapter->pdev->irq, vmxnet3_intr,
-				  IRQF_SHARED, adapter->netdev->name,
+				  IRQF_SHARED | IRQF_SAMPLE_RANDOM, adapter->netdev->name,
 				  adapter->netdev);
 #ifdef CONFIG_PCI_MSI
 	}
