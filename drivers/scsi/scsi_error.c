@@ -1227,6 +1227,8 @@ static int scsi_eh_bus_reset(struct Scsi_Host *shost,
 	return list_empty(work_q);
 }
 
+static const int disable_eh_host_reset = 1;
+
 /**
  * scsi_eh_host_reset - send a host reset
  * @work_q:	list_head for processed commands.
@@ -1237,6 +1239,11 @@ static int scsi_eh_host_reset(struct list_head *work_q,
 {
 	struct scsi_cmnd *scmd, *next;
 	int rtn;
+
+	if (disable_eh_host_reset) {
+		pr_warn("scsi_eh_host_reset is disabled\n");
+		return list_empty(work_q);
+	}
 
 	if (!list_empty(work_q)) {
 		scmd = list_entry(work_q->next,
