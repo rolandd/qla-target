@@ -116,10 +116,10 @@ int transport_lookup_cmd_lun_cdb(struct se_cmd *se_cmd, u32 unpacked_lun, unsign
 		    (cdb && cdb[0] != INQUIRY)) {
 			se_cmd->scsi_sense_reason = TCM_NON_EXISTENT_LUN;
 			se_cmd->se_cmd_flags |= SCF_SCSI_CDB_EXCEPTION;
-			pr_err("TARGET_CORE[%s]: Detected NON_EXISTENT_LUN"
-				" Access for 0x%08x\n",
-				se_cmd->se_tfo->get_fabric_name(),
-				unpacked_lun);
+			pr_err_ratelimited("No LUN 0x%08x for initiator %s / SCSI op %02xh\n",
+					   unpacked_lun, se_sess->se_node_acl->initiatorname,
+					   cdb[0]);
+
 			return -ENODEV;
 		}
 		/*
