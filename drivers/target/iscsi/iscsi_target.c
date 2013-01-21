@@ -1770,8 +1770,13 @@ attach:
 	/*
 	 * Found the referenced task, send to transport for processing.
 	 */
-	if (se_tmr->call_transport)
+	if (se_tmr->call_transport) {
+		spin_lock_irq(&cmd->se_cmd.t_state_lock);
+		cmd->se_cmd.transport_state |= CMD_T_ACTIVE;
+		spin_unlock_irq(&cmd->se_cmd.t_state_lock);
+
 		return transport_generic_handle_tmr(&cmd->se_cmd);
+	}
 
 	/*
 	 * Could not find the referenced LUN, task, or Task Management

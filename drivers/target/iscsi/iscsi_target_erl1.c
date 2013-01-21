@@ -1026,6 +1026,10 @@ int iscsit_execute_cmd(struct iscsi_cmd *cmd, int ooo)
 		}
 		spin_unlock_bh(&cmd->istate_lock);
 
+		spin_lock_irq(&se_cmd->t_state_lock);
+		se_cmd->transport_state |= CMD_T_ACTIVE;
+		spin_unlock_irq(&se_cmd->t_state_lock);
+
 		return transport_generic_handle_tmr(&cmd->se_cmd);
 	case ISCSI_OP_LOGOUT:
 		spin_unlock_bh(&cmd->istate_lock);
