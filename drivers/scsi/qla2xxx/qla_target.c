@@ -418,7 +418,7 @@ static int qla_tgt_reset(struct scsi_qla_host *vha, void *iocb, int mcmd)
 }
 
 /* ha->hardware_lock supposed to be held on entry */
-static void qla_tgt_schedule_sess_for_deletion(struct qla_tgt_sess *sess, bool immediate)
+static void qla_tgt_schedule_sess_for_deletion(struct qla_tgt_sess *sess)
 {
 	struct qla_tgt *tgt = sess->tgt;
 	uint32_t dev_loss_tmo = tgt->ha->port_down_retry_count + 5;
@@ -432,26 +432,20 @@ static void qla_tgt_schedule_sess_for_deletion(struct qla_tgt_sess *sess, bool i
 	list_add_tail(&sess->del_list_entry, &tgt->del_sess_list);
 	sess->deleted = 1;
 
-	if (immediate)
-		dev_loss_tmo = 0;
-
-	sess->expires = jiffies + dev_loss_tmo * HZ;
+	sess->expires = jiffies;
 
 	dev_info(&sess->vha->hw->pdev->dev,
 		 "qla_target(%d) host %lu: session %p for port %02x:%02x:%02x:"
 		 "%02x:%02x:%02x:%02x:%02x (loop ID %d) scheduled for "
-		 "deletion in %u secs (expires: %lu) immed: %d\n",
+		 "deletion in %u secs (expires: %lu)\n",
 		 sess->vha->vp_idx, tgt->vha->host_no, sess,
 		 sess->port_name[0], sess->port_name[1],
 		 sess->port_name[2], sess->port_name[3],
 		 sess->port_name[4], sess->port_name[5],
 		 sess->port_name[6], sess->port_name[7],
-		 sess->loop_id, dev_loss_tmo, sess->expires, immediate);
+		 sess->loop_id, dev_loss_tmo, sess->expires);
 
-	if (immediate)
-		schedule_delayed_work(&tgt->sess_del_work, 0);
-	else
-		schedule_delayed_work(&tgt->sess_del_work, jiffies - sess->expires);
+	schedule_delayed_work(&tgt->sess_del_work, 0);
 }
 
 /* ha->hardware_lock supposed to be held on entry */
@@ -461,7 +455,7 @@ static void qla_tgt_clear_tgt_db(struct qla_tgt *tgt, bool local_only)
 
 	assert_spin_locked(&tgt->ha->hardware_lock);
 	list_for_each_entry(sess, &tgt->sess_list, sess_list_entry)
-		qla_tgt_schedule_sess_for_deletion(sess, true);
+		qla_tgt_schedule_sess_for_deletion(sess);
 
 	/* At this point tgt could be already dead */
 }
@@ -514,7 +508,7 @@ out_free_id_list:
 }
 
 /* ha->hardware_lock supposed to be held on entry */
-static void qla_tgt_undelete_sess(struct qla_tgt_sess *sess)
+void qla_tgt_undelete_sess(struct qla_tgt_sess *sess)
 {
 	assert_spin_locked(&sess->tgt->ha->hardware_lock);
 	BUG_ON(!sess->deleted);
@@ -725,54 +719,6 @@ void qla_tgt_fc_port_added(struct scsi_qla_host *vha, fc_port_t *fcport)
 
 	ha->tgt_ops->put_sess(sess);
 
-	spin_unlock_irqrestore(&ha->hardware_lock, flags);
-}
-
-void qla_tgt_fc_port_deleted(struct scsi_qla_host *vha, fc_port_t *fcport)
-{
-	struct qla_hw_data *ha = vha->hw;
-	struct qla_tgt *tgt = ha->qla_tgt;
-	struct qla_tgt_sess *sess;
-	unsigned long flags;
-
-	dev_info(&ha->pdev->dev, "qla_target(%u) host %lu: (vha->hw->tgt_ops %p / tgt %p / stop %d) deleting rport %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x port_type %d\n",
-		 vha->vp_idx, vha->host_no,
-		 vha->hw->tgt_ops, tgt, tgt->tgt_stop,
-		 fcport->port_name[0], fcport->port_name[1],
-		 fcport->port_name[2], fcport->port_name[3],
-		 fcport->port_name[4], fcport->port_name[5],
-		 fcport->port_name[6], fcport->port_name[7],
-		 fcport->port_type);
-
-
-	if (!vha->hw->tgt_ops)
-		return;
-
-	if (!tgt || (fcport->port_type != FCT_INITIATOR))
-		return;
-
-	spin_lock_irqsave(&ha->hardware_lock, flags);
-	if (tgt->tgt_stop) {
-		spin_unlock_irqrestore(&ha->hardware_lock, flags);
-		return;
-	}
-	sess = qla_tgt_find_sess_by_port_name(tgt, fcport->port_name);
-	if (!sess) {
-		dev_info(&ha->pdev->dev, "qla_target(%u) host %lu: rport to delete not found: %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x\n",
-			 vha->vp_idx, vha->host_no,
-			 fcport->port_name[0], fcport->port_name[1],
-			 fcport->port_name[2], fcport->port_name[3],
-			 fcport->port_name[4], fcport->port_name[5],
-			 fcport->port_name[6], fcport->port_name[7]);
-
-		spin_unlock_irqrestore(&ha->hardware_lock, flags);
-		return;
-	}
-
-	ql_dbg(ql_dbg_tgt_mgt, vha, 0xe10b, "qla_tgt_fc_port_deleted %p", sess);
-
-	sess->local = 1;
-	qla_tgt_schedule_sess_for_deletion(sess, false);
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 }
 

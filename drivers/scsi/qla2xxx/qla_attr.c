@@ -1629,9 +1629,16 @@ static void
 qla2x00_terminate_rport_io(struct fc_rport *rport)
 {
 	fc_port_t *fcport = *(fc_port_t **)rport->dd_data;
+	struct scsi_qla_host *vha;
+	struct qla_hw_data *ha;
+	struct qla_tgt_sess *sess;
+	unsigned long flags;
 
 	if (!fcport)
 		return;
+
+	vha = fcport->vha;
+	ha = vha->hw;
 
 	if (test_bit(ABORT_ISP_ACTIVE, &fcport->vha->dpc_flags))
 		return;
@@ -1640,6 +1647,42 @@ qla2x00_terminate_rport_io(struct fc_rport *rport)
 		qla2x00_abort_all_cmds(fcport->vha, DID_NO_CONNECT << 16);
 		return;
 	}
+
+	/*
+	 * We want to make sure that any target session structure
+	 * with the old loop_id / N_Port handle is gone before we tell
+	 * the firmware to log the initiator out.  So we take
+	 * ha->tgt_mutex across the full operation to prevent any new
+	 * sessions from being created until we're done, then take the
+	 * hardware lock and clear the session out of all tables, drop
+	 * the hardware lock and wait for the session to go away, and
+	 * finally tell the firmware to log the port out.
+	 */
+	mutex_lock(&ha->tgt_mutex);
+
+	/*
+	 * Unfortunately at the moment implementing what's described
+	 * above is a bit invasive: we don't have a way to remove the
+	 * session from lookup, and we don't have a good way to wait
+	 * for all the commands to be freed.  Instead we just mark the
+	 * session as tearing down, which will prevent new commands
+	 * from grabbing it (they'll fail).
+	 */
+	spin_lock_irqsave(&ha->hardware_lock, flags);
+
+	if (ha->tgt_ops) {
+		sess = ha->tgt_ops->find_sess_by_loop_id(vha, fcport->loop_id);
+
+		if (sess) {
+			if (sess->deleted)
+				qla_tgt_undelete_sess(sess);
+			ha->tgt_ops->shutdown_sess(sess);
+			ha->tgt_ops->put_sess(sess);
+		}
+	}
+
+	spin_unlock_irqrestore(&ha->hardware_lock, flags);
+
 	/*
 	 * At this point all fcport's software-states are cleared.  Perform any
 	 * final cleanup of firmware resources (PCBs and XCBs).
@@ -1649,6 +1692,8 @@ qla2x00_terminate_rport_io(struct fc_rport *rport)
 		fcport->vha->hw->isp_ops->fabric_logout(fcport->vha,
 			fcport->loop_id, fcport->d_id.b.domain,
 			fcport->d_id.b.area, fcport->d_id.b.al_pa);
+
+	mutex_unlock(&ha->tgt_mutex);
 }
 
 static int

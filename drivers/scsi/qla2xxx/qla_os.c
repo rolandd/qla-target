@@ -2945,7 +2945,6 @@ qla2x00_schedule_rport_del(struct scsi_qla_host *vha, fc_port_t *fcport,
 		qla2xxx_wake_dpc(base_vha);
 	} else {
 		fc_remote_port_delete(rport);
-		qla_tgt_fc_port_deleted(vha, fcport);
 	}
 }
 
