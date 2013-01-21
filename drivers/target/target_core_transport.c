@@ -1431,7 +1431,7 @@ struct se_device *transport_add_device_to_core_hba(
 	 * Setup the Asymmetric Logical Unit Assignment for struct se_device
 	 */
 	if (core_setup_alua(dev, force_pt) < 0)
-		goto out;
+		goto err_dev_list;
 
 	/*
 	 * Startup the struct se_device processing thread
@@ -1441,8 +1441,16 @@ struct se_device *transport_add_device_to_core_hba(
 	if (IS_ERR(dev->process_thread)) {
 		pr_err("Unable to create kthread: LIO_%s\n",
 			dev->transport->name);
-		goto out;
+		goto err_dev_list;
 	}
+
+	dev->tmr_wq = alloc_workqueue("LIO_tmr", WQ_MEM_RECLAIM | WQ_UNBOUND, 1);
+	if (!dev->tmr_wq) {
+		pr_err("Unable to create tmr workqueue for %s\n",
+			dev->transport->name);
+		goto err_thread;
+	}
+
 	/*
 	 * Setup work_queue for QUEUE_FULL
 	 */
@@ -1460,7 +1468,7 @@ struct se_device *transport_add_device_to_core_hba(
 		if (!inquiry_prod || !inquiry_rev) {
 			pr_err("All non TCM/pSCSI plugins require"
 				" INQUIRY consts\n");
-			goto out;
+			goto err_wq;
 		}
 
 		strncpy(&dev->se_sub_dev->t10_wwn.vendor[0], PURE_VENDOR_ID, 8);
@@ -1470,9 +1478,12 @@ struct se_device *transport_add_device_to_core_hba(
 	scsi_dump_inquiry(dev);
 
 	return dev;
-out:
-	kthread_stop(dev->process_thread);
 
+err_wq:
+	destroy_workqueue(dev->tmr_wq);
+err_thread:
+	kthread_stop(dev->process_thread);
+err_dev_list:
 	spin_lock(&hba->device_lock);
 	list_del(&dev->dev_list);
 	hba->dev_count--;
@@ -1881,18 +1892,6 @@ int transport_generic_handle_data(
 	return 0;
 }
 EXPORT_SYMBOL(transport_generic_handle_data);
-
-/*	transport_generic_handle_tmr():
- *
- *
- */
-int transport_generic_handle_tmr(
-	struct se_cmd *cmd)
-{
-	transport_add_cmd_to_queue(cmd, TRANSPORT_PROCESS_TMR, false);
-	return 0;
-}
-EXPORT_SYMBOL(transport_generic_handle_tmr);
 
 /*
  * If the task is active, request it to be stopped and sleep until it
@@ -4884,8 +4883,9 @@ void transport_send_task_abort(struct se_cmd *cmd)
 	cmd->se_tfo->queue_status(cmd);
 }
 
-static int transport_generic_do_tmr(struct se_cmd *cmd)
+static void target_tmr_work(struct work_struct *work)
 {
+	struct se_cmd *cmd = container_of(work, struct se_cmd, work);
 	struct se_device *dev = cmd->se_dev;
 	struct se_tmr_req *tmr = &cmd->se_tmr_req;
 	int ret;
@@ -4920,8 +4920,20 @@ static int transport_generic_do_tmr(struct se_cmd *cmd)
 	cmd->se_tfo->queue_tm_rsp(cmd);
 
 	transport_cmd_check_stop_to_fabric(cmd);
+}
+
+/*	transport_generic_handle_tmr():
+ *
+ *
+ */
+int transport_generic_handle_tmr(
+	struct se_cmd *cmd)
+{
+	INIT_WORK(&cmd->work, target_tmr_work);
+	queue_work(cmd->se_dev->tmr_wq, &cmd->work);
 	return 0;
 }
+EXPORT_SYMBOL(transport_generic_handle_tmr);
 
 /* Return true if the transport processing thread has work */
 static inline bool transport_process_work(struct se_device *dev)
@@ -5010,9 +5022,6 @@ get_cmd:
 			 */
 			if (!transport_check_aborted_status(cmd, 1))
 				transport_generic_process_write(cmd);
-			break;
-		case TRANSPORT_PROCESS_TMR:
-			transport_generic_do_tmr(cmd);
 			break;
 		case TRANSPORT_COMPLETE_QF_WP:
 			transport_write_pending_qf(cmd);

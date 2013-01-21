@@ -157,7 +157,6 @@ enum transport_state_table {
 	TRANSPORT_PROCESS_WRITE	= 4,
 	TRANSPORT_PROCESSING	= 5,
 	TRANSPORT_COMPLETE	= 6,
-	TRANSPORT_PROCESS_TMR	= 9,
 	TRANSPORT_NEW_CMD_MAP	= 16,
 	TRANSPORT_COMPLETE_QF_WP = 18,
 	TRANSPORT_COMPLETE_QF_OK = 19,
@@ -841,6 +840,7 @@ struct se_device {
 	struct list_head	dev_sep_list;
 	/* Pointer to descriptor for processing thread */
 	struct task_struct	*process_thread;
+	struct workqueue_struct *tmr_wq;
 	struct work_struct	qf_work_queue;
 	struct list_head	delayed_cmd_list;
 	struct list_head	execute_task_list;
