@@ -119,7 +119,7 @@ void core_tmr_abort_task(
 			spin_unlock_irqrestore(&se_sess->sess_cmd_lock, flags);
 			goto out;
 		}
-		se_cmd->transport_state |= CMD_T_ABORTED;
+		se_cmd->transport_state |= CMD_T_ABORTED | CMD_T_SIGNAL_STOP_COMP;
 		spin_unlock(&se_cmd->t_state_lock);
 
 		list_del_init(&se_cmd->se_cmd_list);

@@ -780,8 +780,8 @@ void transport_complete_task(struct se_task *task, int success)
 	 * Check for case where an explict ABORT_TASK has been received
 	 * and transport_wait_for_tasks() will be waiting for completion..
 	 */
-	if (cmd->transport_state & CMD_T_ABORTED &&
-	    cmd->transport_state & CMD_T_STOP) {
+	if (((cmd->transport_state & (CMD_T_ABORTED | CMD_T_STOP)) == (CMD_T_ABORTED | CMD_T_STOP)) ||
+	    (cmd->transport_state & CMD_T_SIGNAL_STOP_COMP)) {
 		spin_unlock_irqrestore(&cmd->t_state_lock, flags);
 		complete(&cmd->t_transport_stop_comp);
 		return;
