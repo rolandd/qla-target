@@ -846,6 +846,15 @@ static int tcm_qla2xxx_is_state_remove(struct se_cmd *se_cmd)
 struct target_fabric_configfs *tcm_qla2xxx_fabric_configfs;
 struct target_fabric_configfs *tcm_qla2xxx_npiv_fabric_configfs;
 
+static inline int radix_tree_update(struct radix_tree_root *root,
+		unsigned long index, void *item)
+{
+	void **old = radix_tree_lookup_slot(root, index);
+
+	*old = item;
+	return 0;
+}
+
 /*
  * Expected to be called with struct qla_hw_data->hardware_lock held
  */
@@ -862,7 +871,7 @@ static void tcm_qla2xxx_clear_nacl_from_fcport_map(struct qla_tgt_sess *sess)
 
 	pr_debug("fc_rport domain: port_id 0x%06x\n", nacl->nport_id);
 
-	node = btree_remove32(&lport->lport_fcport_map, nacl->nport_id);
+	node = radix_tree_delete(&lport->_lport_fcport_map, nacl->nport_id);
 	if (WARN_ON(node && (node != se_nacl))) {
 		/*
 		 * The nacl no longer matches what we think it should be.
@@ -870,8 +879,8 @@ static void tcm_qla2xxx_clear_nacl_from_fcport_map(struct qla_tgt_sess *sess)
 		 * someone dropped the hardware lock.  It clearly is a
 		 * bug elsewhere, but this bit can't make things worse.
 		 */
-		btree_insert32(&lport->lport_fcport_map, nacl->nport_id,
-				node, GFP_ATOMIC);
+		radix_tree_insert(&lport->_lport_fcport_map,
+				nacl->nport_id, node);
 	}
 
 	pr_debug("Removed from fcport_map: %p for WWNN: 0x%016LX,"
@@ -1273,7 +1282,7 @@ static struct qla_tgt_sess *tcm_qla2xxx_find_sess_by_s_id(
 	       (unsigned long)s_id[2]);
 	pr_debug("find_sess_by_s_id: 0x%06x\n", key);
 
-	se_nacl = btree_lookup32(&lport->lport_fcport_map, key);
+	se_nacl = radix_tree_lookup(&lport->_lport_fcport_map, key);
 	if (!se_nacl) {
 		pr_debug("Unable to locate s_id: 0x%06x\n", key);
 		return NULL;
@@ -1311,12 +1320,11 @@ static void tcm_qla2xxx_set_sess_by_s_id(
 	       (unsigned long)s_id[2]);
 	pr_info("set_sess_by_s_id: %p %06x\n", se_sess, key);
 
-	slot = btree_lookup32(&lport->lport_fcport_map, key);
+	slot = radix_tree_lookup(&lport->_lport_fcport_map, key);
 	if (!slot) {
 		pr_debug("Setting up new fc_port entry to new_se_nacl\n");
 		nacl->nport_id = key;
-		rc = btree_insert32(&lport->lport_fcport_map, key, new_se_nacl,
-				GFP_ATOMIC);
+		rc = radix_tree_insert(&lport->_lport_fcport_map, key, new_se_nacl);
 		if (rc)
 			pr_err("Unable to insert s_id into fcport_map: %06x\n",
 					(int)key);
@@ -1328,14 +1336,14 @@ static void tcm_qla2xxx_set_sess_by_s_id(
 
 	if (nacl->qla_tgt_sess) {
 		pr_info("Replacing existing nacl->qla_tgt_sess and fc_port entry\n");
-		btree_update32(&lport->lport_fcport_map, key, new_se_nacl);
+		radix_tree_update(&lport->_lport_fcport_map, key, new_se_nacl);
 		qla_tgt_sess->se_sess = se_sess;
 		nacl->qla_tgt_sess = qla_tgt_sess;
 		return;
 	}
 
 	pr_info("Replacing existing fc_port entry w/o active nacl->qla_tgt_sess\n");
-	btree_update32(&lport->lport_fcport_map, key, new_se_nacl);
+	radix_tree_update(&lport->_lport_fcport_map, key, new_se_nacl);
 	qla_tgt_sess->se_sess = se_sess;
 	nacl->qla_tgt_sess = qla_tgt_sess;
 
@@ -1361,7 +1369,7 @@ static void tcm_qla2xxx_clear_sess_by_s_id(
 	       (unsigned long)s_id[2]);
 	pr_info("clear_sess_by_s_id: %p %06x\n", se_sess, key);
 
-	slot = btree_lookup32(&lport->lport_fcport_map, key);
+	slot = radix_tree_lookup(&lport->_lport_fcport_map, key);
 	if (!slot) {
 		pr_info("Wiping nonexisting fc_port entry\n");
 		qla_tgt_sess->se_sess = se_sess;
@@ -1371,13 +1379,13 @@ static void tcm_qla2xxx_clear_sess_by_s_id(
 
 	if (nacl->qla_tgt_sess) {
 		pr_info("Clearing existing nacl->qla_tgt_sess and fc_port entry\n");
-		btree_remove32(&lport->lport_fcport_map, key);
+		radix_tree_delete(&lport->_lport_fcport_map, key);
 		nacl->qla_tgt_sess = NULL;
 		return;
 	}
 
 	pr_info("Clearing existing fc_port entry\n");
-	btree_remove32(&lport->lport_fcport_map, key);
+	radix_tree_delete(&lport->_lport_fcport_map, key);
 	return;
 }
 
@@ -1683,8 +1691,8 @@ static void tcm_qla2xxx_update_sess(struct qla_tgt_sess *sess, port_id_t s_id,
 		       ((u32) sess->s_id.b.area   <<  8) |
 		       ((u32) sess->s_id.b.al_pa));
 
-		if (btree_lookup32(&lport->lport_fcport_map, key))
-			WARN(btree_remove32(&lport->lport_fcport_map, key) != se_nacl,
+		if (radix_tree_lookup(&lport->_lport_fcport_map, key))
+			WARN(radix_tree_delete(&lport->_lport_fcport_map, key) != se_nacl,
 			     "Found wrong se_nacl when updating s_id %x:%x:%x\n",
 			     sess->s_id.b.domain, sess->s_id.b.area, sess->s_id.b.al_pa);
 		else
@@ -1695,12 +1703,12 @@ static void tcm_qla2xxx_update_sess(struct qla_tgt_sess *sess, port_id_t s_id,
 		       ((u32) s_id.b.area   <<  8) |
 		       ((u32) s_id.b.al_pa));
 
-		if (btree_lookup32(&lport->lport_fcport_map, key)) {
+		if (radix_tree_lookup(&lport->_lport_fcport_map, key)) {
 			WARN(1, "Already have lport_fcport_map entry for s_id %x:%x:%x\n",
 			     s_id.b.domain, s_id.b.area, s_id.b.al_pa);
-			btree_update32(&lport->lport_fcport_map, key, se_nacl);
+			radix_tree_update(&lport->_lport_fcport_map, key, se_nacl);
 		} else {
-			btree_insert32(&lport->lport_fcport_map, key, se_nacl, GFP_ATOMIC);
+			radix_tree_insert(&lport->_lport_fcport_map, key, se_nacl);
 		}
 
 		sess->s_id = s_id;
@@ -1730,21 +1738,13 @@ static struct qla_tgt_func_tmpl tcm_qla2xxx_template = {
 
 static int tcm_qla2xxx_init_lport(struct tcm_qla2xxx_lport *lport)
 {
-	int rc;
-
-	rc = btree_init32(&lport->lport_fcport_map);
-	if (rc) {
-		pr_err("Unable to initialize lport->lport_fcport_map btree\n");
-		return rc;
-	}
-
+	INIT_RADIX_TREE(&lport->_lport_fcport_map, GFP_ATOMIC);
 	lport->lport_loopid_map = vmalloc(sizeof(struct tcm_qla2xxx_fc_loopid) *
 				65536);
 	if (!lport->lport_loopid_map) {
 		pr_err("Unable to allocate lport->lport_loopid_map"
 		       " of %lu bytes\n", sizeof(struct tcm_qla2xxx_fc_loopid)
 		       * 65536);
-		btree_destroy32(&lport->lport_fcport_map);
 		return -ENOMEM;
 	}
 	memset(lport->lport_loopid_map, 0, sizeof(struct tcm_qla2xxx_fc_loopid)
@@ -1801,10 +1801,23 @@ static struct se_wwn *tcm_qla2xxx_make_lport(
 	return &lport->lport_wwn;
 out_lport:
 	vfree(lport->lport_loopid_map);
-	btree_destroy32(&lport->lport_fcport_map);
 out:
 	kfree(lport);
 	return ERR_PTR(ret);
+}
+
+static void radix_tree_destroy(struct radix_tree_root *root)
+{
+	void *node;
+	int index = 0;
+
+	while (radix_tree_gang_lookup(root, &node, index++, 1) == 1) {
+		struct se_node_acl *se_nacl = node;
+		struct tcm_qla2xxx_nacl *nacl = container_of(se_nacl,
+				struct tcm_qla2xxx_nacl, se_node_acl);
+
+		radix_tree_delete(root, nacl->nport_id);
+	}
 }
 
 static void tcm_qla2xxx_drop_lport(struct se_wwn *wwn)
@@ -1813,8 +1826,6 @@ static void tcm_qla2xxx_drop_lport(struct se_wwn *wwn)
 			struct tcm_qla2xxx_lport, lport_wwn);
 	struct scsi_qla_host *vha = lport->qla_vha;
 	struct qla_hw_data *ha = vha->hw;
-	struct se_node_acl *node;
-	u32 key;
 
 	/*
 	 * Call into qla2x_target.c LLD logic to complete the
@@ -1827,9 +1838,7 @@ static void tcm_qla2xxx_drop_lport(struct se_wwn *wwn)
 	qla_tgt_lport_deregister(vha);
 
 	vfree(lport->lport_loopid_map);
-	btree_for_each_safe32(&lport->lport_fcport_map, key, node)
-		btree_remove32(&lport->lport_fcport_map, key);
-	btree_destroy32(&lport->lport_fcport_map);
+	radix_tree_destroy(&lport->_lport_fcport_map);
 	kfree(lport);
 }
 

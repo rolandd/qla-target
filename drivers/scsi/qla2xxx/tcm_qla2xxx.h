@@ -66,7 +66,7 @@ struct tcm_qla2xxx_lport {
 	/* ASCII formatted WWPN+WWNN for NPIV FC Target Lport */
 	char lport_npiv_name[TCM_QLA2XXX_NPIV_NAMELEN];
 	/* map for fc_port pointers in 24-bit FC Port ID space */
-	struct btree_head32 lport_fcport_map;
+	struct radix_tree_root _lport_fcport_map;
 	/* vmalloc-ed memory for fc_port pointers for 16-bit FC loop ID */
 	struct tcm_qla2xxx_fc_loopid *lport_loopid_map;
 	/* Pointer to struct scsi_qla_host from qla2xxx LLD */
