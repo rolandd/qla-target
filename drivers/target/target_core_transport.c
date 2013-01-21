@@ -2598,12 +2598,16 @@ static int transport_generic_cmd_sequencer(
 		cmd->se_cmd_flags |= SCF_SCSI_DATA_SG_IO_CDB;
 		break;
 	case WRITE_10:
+	case WRITE_VERIFY:
 		sectors = transport_get_sectors_10(cdb, cmd, &sector_ret);
 		if (sector_ret)
 			goto out_unsupported_cdb;
 		size = transport_get_size(sectors, cdb, cmd);
 		cmd->t_task_lba = transport_lba_32(cdb);
-		if (cdb[1] & 0x8)
+		/* WRITE AND VERIFY always implies FUA */
+		if (cdb[0] == WRITE_VERIFY)
+			cmd->se_cmd_flags |= SCF_FUA;
+		else if (cdb[1] & 0x8)
 			cmd->se_cmd_flags |= SCF_FUA;
 		cmd->se_cmd_flags |= SCF_SCSI_DATA_SG_IO_CDB;
 		break;
