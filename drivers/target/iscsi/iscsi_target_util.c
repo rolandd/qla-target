@@ -188,10 +188,14 @@ struct iscsi_cmd *iscsit_allocate_se_cmd(
 	struct iscsi_cmd *cmd;
 	struct se_cmd *se_cmd;
 	int sam_task_attr;
+	struct timespec tod;
 
 	cmd = iscsit_allocate_cmd(conn, GFP_KERNEL);
 	if (!cmd)
 		return NULL;
+
+	ktime_get_ts(&tod);
+	cmd->se_cmd.recv_time = timespec_to_ktime(tod);
 
 	cmd->data_direction = data_direction;
 	cmd->data_length = data_length;
