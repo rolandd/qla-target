@@ -821,6 +821,8 @@ struct qla_tgt_sess {
 
 struct qla_tgt_cmd {
 	struct qla_tgt_sess *sess;
+	u64 recv_time;
+	u64 ctio_time;
 	int state;
 	struct se_cmd se_cmd;
 	struct work_struct free_work;
@@ -965,6 +967,7 @@ extern void qla_tgt_xmit_tm_rsp(struct qla_tgt_mgmt_cmd *);
 extern void qla_tgt_free_mcmd(struct qla_tgt_mgmt_cmd *);
 extern void qla_tgt_free_cmd(struct qla_tgt_cmd *cmd);
 extern int __qla_tgt_sess_put(struct qla_tgt_sess *);
+extern void qla_tgt_dump_error_ctio(struct scsi_qla_host *vha, uint32_t handle, void *ctio);
 extern void qla_tgt_ctio_completion(struct scsi_qla_host *, uint32_t);
 extern void qla_tgt_async_event(uint16_t, struct scsi_qla_host *, uint16_t *);
 extern void qla_tgt_enable_vha(struct scsi_qla_host *);

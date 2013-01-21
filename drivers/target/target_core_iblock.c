@@ -634,8 +634,8 @@ static void iblock_bio_done(struct bio *bio, int err)
 		err = -EIO;
 
 	if (err != 0) {
-		pr_err("test_bit(BIO_UPTODATE) failed for bio: %p,"
-			" err: %d\n", bio, err);
+		pr_err("IO error for bio: se_cmd %p, err %d, pending %d\n",
+		       task->task_se_cmd, err, atomic_read(&ibr->pending));
 		/*
 		 * Bump the ib_bio_err_cnt and release bio.
 		 */

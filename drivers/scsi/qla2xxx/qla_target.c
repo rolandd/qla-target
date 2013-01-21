@@ -23,6 +23,8 @@
  *  GNU General Public License for more details.
  */
 
+#define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
+
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/types.h>
@@ -1270,6 +1272,8 @@ static void qla_tgt_24xx_retry_term_exchange(struct scsi_qla_host *vha,
 	ctio->u.status1.flags =
 		__constant_cpu_to_le16(CTIO7_FLAGS_STATUS_MODE_1 | CTIO7_FLAGS_TERMINATE);
 	ctio->u.status1.ox_id = entry->fcp_hdr_le.ox_id;
+	pr_info("Terminate CTIO exch addr %x ox_id %x\n",
+		ctio->exchange_addr, ctio->u.status1.ox_id);
 
 	qla2x00_isp_cmd(vha, vha->req);
 
@@ -1357,6 +1361,7 @@ static void qla_tgt_24xx_handle_abts(struct scsi_qla_host *vha,
 		return;
 	}
 
+#if 0
 	rc = __qla_tgt_24xx_handle_abts(vha, abts, sess);
 	if (rc != 0) {
 		printk(KERN_ERR "qla_target(%d): __qla_tgt_24xx_handle_abts() failed: %d\n",
@@ -1364,6 +1369,19 @@ static void qla_tgt_24xx_handle_abts(struct scsi_qla_host *vha,
 		qla_tgt_24xx_send_abts_resp(vha, abts, FCP_TMF_REJECTED, false);
 		return;
 	}
+#else
+	/*
+	 *__qla_tgt_24xx_handle_abts() never works because we pass a
+	 * bogus LUN 0 into the ->handle_tmr() method, so don't bother.
+	 */
+	pr_info("ABTS received  exch addr to abort: %08x s_id %x:%x:%x param %04x\n",
+		abts->exchange_addr_to_abort,
+		abts->fcp_hdr_le.s_id[2],
+		abts->fcp_hdr_le.s_id[1],
+		abts->fcp_hdr_le.s_id[0],
+		le32_to_cpu(abts->fcp_hdr_le.parameter));
+	qla_tgt_24xx_send_abts_resp(vha, abts, FCP_TMF_REJECTED, false);
+#endif
 }
 
 /*
@@ -2085,6 +2103,7 @@ int qla_tgt_xmit_response(struct qla_tgt_cmd *cmd, int xmit_type, uint8_t scsi_s
 
 
 	cmd->state = QLA_TGT_STATE_PROCESSED; /* Mid-level is done processing */
+	cmd->ctio_time = local_clock();
 
 	ql_dbg(ql_dbg_tgt, vha, 0xe01a, "Xmitting CTIO7 response pkt for 24xx:"
 			" %p scsi_status: 0x%02x\n", pkt, scsi_status);
@@ -2204,6 +2223,8 @@ static int __qla_tgt_send_term_exchange(struct scsi_qla_host *vha, struct qla_tg
 	ctio24->u.status1.flags = (atio->u.isp24.attr << 9) | __constant_cpu_to_le16(
 		CTIO7_FLAGS_STATUS_MODE_1 | CTIO7_FLAGS_TERMINATE);
 	ctio24->u.status1.ox_id = swab16(atio->u.isp24.fcp_hdr.ox_id);
+	pr_info("Terminate CTIO exch addr %x ox_id %x\n",
+		ctio24->exchange_addr, ctio24->u.status1.ox_id);
 
 	/* Most likely, it isn't needed */
 	ctio24->u.status1.residual = get_unaligned((uint32_t *)
@@ -2376,13 +2397,13 @@ static struct qla_tgt_cmd *qla_tgt_ctio_to_cmd(struct scsi_qla_host *vha, uint32
 
 	if (handle != QLA_TGT_NULL_HANDLE) {
 		if (unlikely(handle == QLA_TGT_SKIP_HANDLE)) {
-			ql_dbg(ql_dbg_tgt, vha, 0xe01e, "%s", "SKIP_HANDLE CTIO\n");
+			printk(KERN_WARNING "SKIP_HANDLE CTIO\n");
 			return NULL;
 		}
 		/* handle-1 is actually used */
 		if (unlikely(handle > MAX_OUTSTANDING_COMMANDS)) {
-			printk(KERN_ERR "qla_target(%d): Wrong handle %x "
-				"received\n", vha->vp_idx, handle);
+			printk(KERN_ERR "qla_target(%d): Wrong handle %x > %x "
+			       "received\n", vha->vp_idx, handle, MAX_OUTSTANDING_COMMANDS);
 			return NULL;
 		}
 		cmd = qla_tgt_get_cmd(vha, handle);
@@ -2401,6 +2422,26 @@ static struct qla_tgt_cmd *qla_tgt_ctio_to_cmd(struct scsi_qla_host *vha, uint32
 	}
 
 	return cmd;
+}
+
+void qla_tgt_dump_error_ctio(struct scsi_qla_host *vha, uint32_t handle, void *ctio_p)
+{
+	struct qla_hw_data *ha = vha->hw;
+	struct qla_tgt_cmd *cmd;
+	ctio7_from_24xx_t *ctio = ctio_p;
+
+	qla_printk(KERN_ERR, ha, "CTIO error entry status 0x%x handle 0x%x\n",
+		   ctio->entry_status, ctio->handle);
+
+	print_hex_dump(KERN_WARNING, "  ", DUMP_PREFIX_OFFSET, 16, 1, ctio_p, 64, 0);
+
+	cmd = qla_tgt_ctio_to_cmd(vha, handle, ctio_p);
+
+	if (cmd) {
+		qla_printk(KERN_ERR, ha, "ATIO for cmd %p (CTIO handle 0x%x)\n",
+			   cmd, ctio->handle);
+		print_hex_dump(KERN_WARNING, "  ", DUMP_PREFIX_OFFSET, 16, 1, &cmd->atio, 64, 0);
+	}
 }
 
 /*
@@ -2673,6 +2714,8 @@ static int qla_tgt_handle_cmd_for_atio(struct scsi_qla_host *vha,
 			"failed\n", vha->vp_idx);
 		return -ENOMEM;
 	}
+
+	cmd->recv_time = local_clock();
 
 	INIT_LIST_HEAD(&cmd->cmd_list);
 
@@ -3112,6 +3155,8 @@ static void qla_tgt_handle_srr(struct scsi_qla_host *vha, struct qla_tgt_srr_cti
 
 	ql_dbg(ql_dbg_tgt_mgt, vha, 0xe12c, "SRR cmd %p, srr_ui %x\n",
 			cmd, srr_ui);
+	printk(KERN_ERR "%s: SRR for se_cmd %p cmd %p (srr_ui 0x%x)\n",
+	       __func__, se_cmd, cmd, srr_ui);
 
 	switch (srr_ui) {
 	case SRR_IU_STATUS:

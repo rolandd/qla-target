@@ -44,6 +44,7 @@
 #include <scsi/scsi_host.h>
 #include <scsi/scsi_device.h>
 #include <scsi/scsi_cmnd.h>
+#include <scsi/scsi_dbg.h>
 #include <target/target_core_base.h>
 #include <target/target_core_fabric.h>
 #include <target/target_core_fabric_configfs.h>
@@ -579,7 +580,31 @@ u32 tcm_qla2xxx_get_task_tag(struct se_cmd *se_cmd)
 
 int tcm_qla2xxx_get_cmd_state(struct se_cmd *se_cmd)
 {
-	return 0;
+	struct qla_tgt_cmd *cmd = container_of(se_cmd, struct qla_tgt_cmd, se_cmd);
+
+	return cmd->state;
+}
+
+void tcm_qla2xxx_dump_cmd(struct se_cmd *se_cmd)
+{
+	struct qla_tgt_cmd *cmd = container_of(se_cmd, struct qla_tgt_cmd, se_cmd);
+	atio_from_isp_t *atio = &cmd->atio;
+	unsigned long long tr = cmd->recv_time;
+	unsigned long rr = do_div(tr, 1000000000);
+	unsigned long long tc = cmd->ctio_time;
+	unsigned long rc = do_div(tc, 1000000000);
+
+	pr_info("se_cmd %p / cmd %p  exchange addr %08x s_id %x:%x:%x (recv time %5lu.%06lu ctio time %5lu.%06lu)\n",
+		se_cmd, cmd, atio->u.isp24.exchange_addr,
+		atio->u.isp24.fcp_hdr.s_id[0],
+		atio->u.isp24.fcp_hdr.s_id[1],
+		atio->u.isp24.fcp_hdr.s_id[2],
+		(unsigned long) tr, rr,
+		(unsigned long) tc, rc);
+	pr_info("ATIO: \n");
+	print_hex_dump(KERN_INFO, "  ", DUMP_PREFIX_OFFSET, 16, 1, &cmd->atio, 64, 0);
+	pr_info("CDB: ");
+	__scsi_print_command(&atio->u.isp24.fcp_cmnd.cdb[0]);
 }
 
 /*
@@ -647,6 +672,9 @@ int tcm_qla2xxx_handle_data(struct qla_tgt_cmd *cmd)
 			return 0;
 		}
 		spin_unlock_irqrestore(&se_cmd->t_state_lock, flags);
+
+		pr_warn_once("!!! se_cmd %p / cmd %p failed to transfer data.\n",
+			     se_cmd, cmd);
 
 		se_cmd->scsi_sense_reason = TCM_CHECK_CONDITION_ABORT_CMD;
 		INIT_WORK(&cmd->work, tcm_qla2xxx_do_rsp);
@@ -1781,6 +1809,7 @@ static struct target_core_fabric_ops tcm_qla2xxx_ops = {
 	.set_default_node_attributes	= tcm_qla2xxx_set_default_node_attrs,
 	.get_task_tag			= tcm_qla2xxx_get_task_tag,
 	.get_cmd_state			= tcm_qla2xxx_get_cmd_state,
+	.dump_cmd			= tcm_qla2xxx_dump_cmd,
 	.queue_data_in			= tcm_qla2xxx_queue_data_in,
 	.queue_status			= tcm_qla2xxx_queue_status,
 	.queue_tm_rsp			= tcm_qla2xxx_queue_tm_rsp,

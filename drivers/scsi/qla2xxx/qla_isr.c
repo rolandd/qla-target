@@ -1965,6 +1965,16 @@ qla2x00_error_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, sts_entry_t *pkt)
 		    "UNKNOWN flag error.\n");
 
 	if (que >= ha->max_req_queues) {
+		if (pkt->entry_type == CTIO_TYPE7) {
+			if (!HANDLE_IS_CTIO_COMP(pkt->handle)) {
+				qla_printk(KERN_ERR, ha, "%s: error entry, CTIO Type 7 (0x%0x) status 0x%x handle 0x%x\n",
+					   __func__, pkt->entry_type, pkt->entry_status, pkt->handle);
+				print_hex_dump(KERN_WARNING, "  ", DUMP_PREFIX_OFFSET, 16, 1, pkt, 64, 0);
+			} else {
+				qla_tgt_dump_error_ctio(vha, pkt->handle, pkt);
+			}
+		}
+
 		/* Target command with high bits of handle set */
 		qla_printk(KERN_ERR, ha, "%s: error entry, type 0x%0x status 0x%x\n",
 			   __func__, pkt->entry_type, pkt->entry_status);

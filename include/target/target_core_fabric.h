@@ -72,6 +72,7 @@ struct target_core_fabric_ops {
 	void (*set_default_node_attributes)(struct se_node_acl *);
 	u32 (*get_task_tag)(struct se_cmd *);
 	int (*get_cmd_state)(struct se_cmd *);
+	void (*dump_cmd)(struct se_cmd *);
 	int (*queue_data_in)(struct se_cmd *);
 	int (*queue_status)(struct se_cmd *);
 	int (*queue_tm_rsp)(struct se_cmd *);

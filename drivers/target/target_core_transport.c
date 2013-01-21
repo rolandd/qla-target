@@ -4065,25 +4065,27 @@ void target_wait_for_sess_cmds(
 				&se_sess->sess_wait_list, se_cmd_list) {
 		list_del(&se_cmd->se_cmd_list);
 
-		pr_debug("Waiting for se_cmd: %p t_state: %d, fabric state:"
-			" %d\n", se_cmd, se_cmd->t_state,
+		pr_info("Waiting for se_cmd: %p t_state: %d, transport state: 0x%x, fabric state: %d\n",
+			se_cmd, se_cmd->t_state, se_cmd->transport_state,
 			se_cmd->se_tfo->get_cmd_state(se_cmd));
+		if (se_cmd->se_tfo->dump_cmd)
+			se_cmd->se_tfo->dump_cmd(se_cmd);
 
 		if (wait_for_tasks) {
-			pr_debug("Calling transport_wait_for_tasks se_cmd: %p t_state: %d,"
+			pr_info("Calling transport_wait_for_tasks se_cmd: %p t_state: %d,"
 				" fabric state: %d\n", se_cmd, se_cmd->t_state,
 				se_cmd->se_tfo->get_cmd_state(se_cmd));
 
 			rc = transport_wait_for_tasks(se_cmd);
 
-			pr_debug("After transport_wait_for_tasks se_cmd: %p t_state: %d,"
-				" fabric state: %d\n", se_cmd, se_cmd->t_state,
-				se_cmd->se_tfo->get_cmd_state(se_cmd));
+			pr_info("After transport_wait_for_tasks se_cmd: %p t_state: %d,"
+				" fabric state: %d rc: %d\n", se_cmd, se_cmd->t_state,
+				se_cmd->se_tfo->get_cmd_state(se_cmd), rc);
 		}
 
 		if (!rc) {
 			wait_for_completion(&se_cmd->cmd_wait_comp);
-			pr_debug("After cmd_wait_comp: se_cmd: %p t_state: %d"
+			pr_info("After cmd_wait_comp: se_cmd: %p t_state: %d"
 				" fabric state: %d\n", se_cmd, se_cmd->t_state,
 				se_cmd->se_tfo->get_cmd_state(se_cmd));
 		}
