@@ -873,6 +873,13 @@ struct ipoib_neigh *ipoib_neigh_alloc(struct neighbour *neighbour,
 	if (!neigh)
 		return NULL;
 
+	/*
+	 * PURE-5224: if neighbour comes from bonding, we won't get
+	 * get ipoib_neigh_setup_dev() called properly.  Hack around
+	 * this by overriding parms->neigh_cleanup here.
+	 */
+	neighbour->parms->neigh_cleanup = ipoib_neigh_cleanup;
+
 	neigh->neighbour = neighbour;
 	neigh->dev = dev;
 	memset(&neigh->dgid.raw, 0, sizeof (union ib_gid));
