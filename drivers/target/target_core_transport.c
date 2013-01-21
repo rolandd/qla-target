@@ -4202,9 +4202,9 @@ static void target_release_cmd_kref(struct kref *kref)
  * @se_sess:	session to reference
  * @se_cmd:	command descriptor to drop
  */
-int target_put_sess_cmd(struct se_session *se_sess, struct se_cmd *se_cmd)
+void target_put_sess_cmd(struct se_session *se_sess, struct se_cmd *se_cmd)
 {
-	return kref_put(&se_cmd->cmd_kref, target_release_cmd_kref);
+	kref_put(&se_cmd->cmd_kref, target_release_cmd_kref);
 }
 EXPORT_SYMBOL(target_put_sess_cmd);
 

@@ -420,9 +420,9 @@ static int tcm_qla2xxx_check_stop_free(struct se_cmd *se_cmd)
 		 */
 		transport_generic_free_cmd(se_cmd, 1);
 		qla_tgt_free_mcmd(mcmd);
-		return 1;
-	}
-	return target_put_sess_cmd(se_cmd->se_sess, se_cmd);
+	} else
+		target_put_sess_cmd(se_cmd->se_sess, se_cmd);
+	return 1;
 }
 
 /* tcm_qla2xxx_release_cmd - Callback from TCM Core to release underlying fabric descriptor
