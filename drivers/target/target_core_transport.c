@@ -1667,7 +1667,7 @@ void target_submit_cmd(struct se_cmd *se_cmd, struct se_session *se_sess,
 	/*
 	 * Locate se_lun pointer and attach it to struct se_cmd
 	 */
-	if (transport_lookup_cmd_lun(se_cmd, unpacked_lun) < 0) {
+	if (transport_lookup_cmd_lun_cdb(se_cmd, unpacked_lun, cdb) < 0) {
 		transport_send_check_condition_and_sense(se_cmd,
 				se_cmd->scsi_sense_reason, 0);
 		target_put_sess_cmd(se_sess, se_cmd);

@@ -58,7 +58,7 @@ static struct se_subsystem_dev *lun0_su_dev;
 /* not static, needed by tpg.c */
 struct se_device *g_lun0_dev;
 
-int transport_lookup_cmd_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
+int transport_lookup_cmd_lun_cdb(struct se_cmd *se_cmd, u32 unpacked_lun, unsigned char *cdb)
 {
 	struct se_lun *se_lun = NULL;
 	struct se_session *se_sess = se_cmd->se_sess;
@@ -112,7 +112,8 @@ int transport_lookup_cmd_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 		 * REPORT_LUNS, et al to be returned when no active
 		 * MappedLUN=0 exists for this Initiator Port.
 		 */
-		if (unpacked_lun != 0) {
+		if (unpacked_lun != 0 &&
+		    (cdb && cdb[0] != INQUIRY)) {
 			se_cmd->scsi_sense_reason = TCM_NON_EXISTENT_LUN;
 			se_cmd->se_cmd_flags |= SCF_SCSI_CDB_EXCEPTION;
 			pr_err("TARGET_CORE[%s]: Detected NON_EXISTENT_LUN"
@@ -165,6 +166,12 @@ int transport_lookup_cmd_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 	spin_unlock_irqrestore(&se_lun->lun_cmd_lock, flags);
 
 	return 0;
+}
+EXPORT_SYMBOL(transport_lookup_cmd_lun_cdb);
+
+int transport_lookup_cmd_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
+{
+	return transport_lookup_cmd_lun_cdb(se_cmd, unpacked_lun, NULL);
 }
 EXPORT_SYMBOL(transport_lookup_cmd_lun);
 
