@@ -794,6 +794,8 @@ extern void blk_abort_request(struct request *);
 extern void blk_abort_queue(struct request_queue *);
 extern void blk_unprep_request(struct request *);
 
+#define PS_TARGET_WWN_IN_NETWORK_ORDER
+
 /*
  * Access functions for manipulating queue properties
  */

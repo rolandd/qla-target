@@ -1665,7 +1665,7 @@ static struct se_wwn *tcm_qla2xxx_make_lport(
 		pr_err("Unable to allocate struct tcm_qla2xxx_lport\n");
 		return ERR_PTR(-ENOMEM);
 	}
-	lport->lport_wwpn = wwpn;
+	lport->lport_wwpn = cpu_to_be64(wwpn);
 	tcm_qla2xxx_format_wwn(&lport->lport_name[0], TCM_QLA2XXX_NAMELEN, wwpn);
 	sprintf(lport->lport_naa_name, "naa.%016llx", (unsigned long long) wwpn);
 
