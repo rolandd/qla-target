@@ -724,7 +724,7 @@ qla2x00_process_loopback(struct fc_bsg_job *bsg_job)
 				bsg_job->reply->reply_payload_rcv_len = 0;
 				bsg_job->reply->result = (DID_ERROR << 16);
 				rval = -EPERM;
-				goto done_free_dma_req;
+				goto done_free_dma_rsp;
 			}
 
 			if (elreq.options != EXTERNAL_LOOPBACK) {
@@ -740,7 +740,7 @@ qla2x00_process_loopback(struct fc_bsg_job *bsg_job)
 					bsg_job->reply->result =
 						(DID_ERROR << 16);
 					rval = -EPERM;
-					goto done_free_dma_req;
+					goto done_free_dma_rsp;
 				}
 			} else {
 				/* For external loopback to work
@@ -753,7 +753,7 @@ qla2x00_process_loopback(struct fc_bsg_job *bsg_job)
 					bsg_job->reply->result =
 						(DID_ERROR << 16);
 					rval = -EPERM;
-					goto done_free_dma_req;
+					goto done_free_dma_rsp;
 				}
 			}
 
@@ -789,7 +789,7 @@ qla2x00_process_loopback(struct fc_bsg_job *bsg_job)
 				bsg_job->reply->reply_payload_rcv_len = 0;
 				bsg_job->reply->result = (DID_ERROR << 16);
 				rval = -EIO;
-				goto done_free_dma_req;
+				goto done_free_dma_rsp;
 			}
 		} else {
 			type = "FC_BSG_HST_VENDOR_LOOPBACK";
@@ -832,6 +832,7 @@ qla2x00_process_loopback(struct fc_bsg_job *bsg_job)
 			rsp_data_len);
 	}
 
+done_free_dma_rsp:
 	dma_free_coherent(&ha->pdev->dev, rsp_data_len,
 		rsp_data, rsp_data_dma);
 done_free_dma_req:
