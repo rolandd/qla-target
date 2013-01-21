@@ -153,8 +153,10 @@ struct ib_umem *ib_umem_get(struct ib_ucontext *context, unsigned long addr,
 					   PAGE_SIZE / sizeof (struct page *)),
 				     umem->writable, 0, page_list, vma_list);
 
-		if (ret < 0)
+		if (ret < 0) {
+			pr_err("<%s> G-U-P returned %d\n", current->comm, ret);
 			goto out;
+		}
 
 		cur_base += ret * PAGE_SIZE;
 		npages   -= ret;

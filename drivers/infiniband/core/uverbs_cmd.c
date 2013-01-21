@@ -33,9 +33,12 @@
  * SOFTWARE.
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ":%s:%d: " fmt, __func__, __LINE__
+
 #include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/slab.h>
+#include <linux/sched.h>
 #include <linux/moduleparam.h>
 
 #include <asm/uaccess.h>
@@ -607,36 +610,49 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 	struct ib_mr                *mr;
 	int                          ret;
 
-	if (out_len < sizeof resp)
+	if (out_len < sizeof resp) {
+		pr_err("<%s> out_len %d < sizeof resp %zd\n", current->comm, out_len, sizeof resp);
 		return -ENOSPC;
+	}
 
-	if (copy_from_user(&cmd, buf, sizeof cmd))
+	if (copy_from_user(&cmd, buf, sizeof cmd)) {
+		pr_err("<%s> copy_from_user failed\n", current->comm);
 		return -EFAULT;
+	}
 
 	INIT_UDATA(&udata, buf + sizeof cmd,
 		   (unsigned long) cmd.response + sizeof resp,
 		   in_len - sizeof cmd, out_len - sizeof resp);
 
-	if ((cmd.start & ~PAGE_MASK) != (cmd.hca_va & ~PAGE_MASK))
+	if ((cmd.start & ~PAGE_MASK) != (cmd.hca_va & ~PAGE_MASK)) {
+		pr_err("<%s> cmd.start %llx misaligned with cmd.hca_va %llx\n",
+		       current->comm, cmd.start, cmd.hca_va);
 		return -EINVAL;
+	}
 
 	/*
 	 * Local write permission is required if remote write or
 	 * remote atomic permission is also requested.
 	 */
 	if (cmd.access_flags & (IB_ACCESS_REMOTE_ATOMIC | IB_ACCESS_REMOTE_WRITE) &&
-	    !(cmd.access_flags & IB_ACCESS_LOCAL_WRITE))
+	    !(cmd.access_flags & IB_ACCESS_LOCAL_WRITE)) {
+		pr_err("<%s> cmd.access_flags %x missing IB_ACCESS_LOCAL_WRITE\n",
+		       current->comm, cmd.access_flags);
 		return -EINVAL;
+	}
 
 	uobj = kmalloc(sizeof *uobj, GFP_KERNEL);
-	if (!uobj)
+	if (!uobj) {
+		pr_err("<%s> kmalloc(sizeof *uobj) failed\n", current->comm);
 		return -ENOMEM;
+	}
 
 	init_uobj(uobj, 0, file->ucontext, &mr_lock_key);
 	down_write(&uobj->mutex);
 
 	pd = idr_read_pd(cmd.pd_handle, file->ucontext);
 	if (!pd) {
+		pr_err("<%s> pd for handle %x not found\n", current->comm, cmd.pd_handle);
 		ret = -EINVAL;
 		goto err_free;
 	}
@@ -645,6 +661,7 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 				     cmd.access_flags, &udata);
 	if (IS_ERR(mr)) {
 		ret = PTR_ERR(mr);
+		pr_err("<%s> LLD reg_user_mr returned %d\n", current->comm, ret);
 		goto err_put;
 	}
 
@@ -656,8 +673,10 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 
 	uobj->object = mr;
 	ret = idr_add_uobj(&ib_uverbs_mr_idr, uobj);
-	if (ret)
+	if (ret) {
+		pr_err("<%s> idr_add_uobj returned %d\n", current->comm, ret);
 		goto err_unreg;
+	}
 
 	memset(&resp, 0, sizeof resp);
 	resp.lkey      = mr->lkey;
@@ -666,6 +685,7 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 
 	if (copy_to_user((void __user *) (unsigned long) cmd.response,
 			 &resp, sizeof resp)) {
+		pr_err("<%s> copy_to_user failed\n", current->comm);
 		ret = -EFAULT;
 		goto err_copy;
 	}

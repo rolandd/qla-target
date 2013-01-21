@@ -132,13 +132,17 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 	int n;
 
 	mr = kmalloc(sizeof *mr, GFP_KERNEL);
-	if (!mr)
+	if (!mr) {
+		printk(KERN_ERR "kmalloc(mlx4_ib_mr) failed\n");
 		return ERR_PTR(-ENOMEM);
+	}
 
 	mr->umem = ib_umem_get(pd->uobject->context, start, length,
 			       access_flags, 0);
 	if (IS_ERR(mr->umem)) {
 		err = PTR_ERR(mr->umem);
+		printk(KERN_ERR "ib_umem_get for start %llx length %llx (access_flags %d) returned %d\n",
+		       start, length, access_flags, err);
 		goto err_free;
 	}
 
@@ -147,16 +151,22 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 
 	err = mlx4_mr_alloc(dev->dev, to_mpd(pd)->pdn, virt_addr, length,
 			    convert_access(access_flags), n, shift, &mr->mmr);
-	if (err)
+	if (err) {
+		printk(KERN_ERR "mlx4_mr_alloc returned %d\n", err);
 		goto err_umem;
+	}
 
 	err = mlx4_ib_umem_write_mtt(dev, &mr->mmr.mtt, mr->umem);
-	if (err)
+	if (err) {
+		printk(KERN_ERR "mlx4_ib_umem_write_mtt returned %d\n", err);
 		goto err_mr;
+	}
 
 	err = mlx4_mr_enable(dev->dev, &mr->mmr);
-	if (err)
+	if (err) {
+		printk(KERN_ERR "mlx4_mr_enable returned %d\n", err);
 		goto err_mr;
+	}
 
 	mr->ibmr.rkey = mr->ibmr.lkey = mr->mmr.key;
 
