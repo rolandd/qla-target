@@ -507,6 +507,62 @@ out_free_id_list:
 	return res;
 }
 
+void qla_tgt_dump_port_database(struct scsi_qla_host *vha, char *buf, int size)
+{
+	struct qla_hw_data *ha = vha->hw;
+	dma_addr_t gid_list_dma;
+	struct gid_list_info *gid_list;
+	fc_port_t fcport;
+	char *id_iter;
+	int rc, i;
+	uint16_t entries, loop_id;
+	int off = 0;
+
+	gid_list = dma_alloc_coherent(&ha->pdev->dev, GID_LIST_SIZE,
+			&gid_list_dma, GFP_KERNEL);
+	if (!gid_list) {
+		printk(KERN_ERR "qla_target(%d): DMA Alloc failed of %zd\n",
+			vha->vp_idx, GID_LIST_SIZE);
+		return;
+	}
+
+	/* Get list of logged in devices */
+	rc = qla2x00_get_id_list(vha, gid_list, gid_list_dma, &entries);
+	if (rc != QLA_SUCCESS) {
+		printk(KERN_ERR "qla_target(%d): get_id_list() failed: %x\n",
+			vha->vp_idx, rc);
+		goto out_free_id_list;
+	}
+
+	id_iter = (char *)gid_list;
+	for (i = 0; i < entries; i++) {
+		struct gid_list_info *gid = (struct gid_list_info *)id_iter;
+		loop_id = le16_to_cpu(gid->loop_id);
+		fcport.loop_id = loop_id;
+
+		rc = qla2x00_get_port_database(vha, &fcport, 0);
+		if (rc != QLA_SUCCESS) {
+			printk(KERN_ERR "qla_target(%d): Failed to retrieve fcport "
+			       "information -- get_port_database() returned %x "
+			       "(loop_id=0x%04x)", vha->vp_idx, rc, loop_id);
+		} else {
+			off += snprintf(buf + off, size - off,
+					"0x%016llx,%02x%02x%02x,0x%04x\n",
+					be64_to_cpup((__force __be64 *) fcport.port_name),
+					fcport.d_id.b.domain,
+					fcport.d_id.b.area,
+					fcport.d_id.b.al_pa,
+					fcport.loop_id);
+		}
+
+		id_iter += ha->gid_list_info_size;
+	}
+
+out_free_id_list:
+	dma_free_coherent(&ha->pdev->dev, GID_LIST_SIZE, gid_list, gid_list_dma);
+}
+EXPORT_SYMBOL(qla_tgt_dump_port_database);
+
 /* ha->hardware_lock supposed to be held on entry */
 void qla_tgt_undelete_sess(struct qla_tgt_sess *sess)
 {

@@ -753,6 +753,37 @@ static ssize_t lio_target_nacl_show_info(
 
 TF_NACL_BASE_ATTR_RO(lio_target, info);
 
+static ssize_t lio_target_nacl_show_sessions(
+	struct se_node_acl *se_nacl,
+	char *page)
+{
+	struct iscsi_session *sess;
+	struct iscsi_conn *conn;
+	struct se_session *se_sess;
+	ssize_t rb = 0;
+
+	page[0] = 0;
+
+	spin_lock_bh(&se_nacl->nacl_sess_lock);
+
+	list_for_each_entry(se_sess, &se_nacl->acl_sess_list, sess_acl_list) {
+		sess = se_sess->fabric_sess_ptr;
+		list_for_each_entry(conn, &sess->sess_conn_list, conn_list) {
+			rb += snprintf(page + rb, PAGE_SIZE - rb, "%s,%d,%s,%d\n",
+				       conn->local_ip, conn->local_port,
+				       conn->login_ip, conn->login_port);
+			if (rb >= PAGE_SIZE)
+				goto full;
+		}
+	}
+
+full:
+	spin_unlock_bh(&se_nacl->nacl_sess_lock);
+
+	return min_t(ssize_t, PAGE_SIZE, rb);
+}
+TF_NACL_BASE_ATTR_RO(lio_target, sessions);
+
 static ssize_t lio_target_nacl_show_cmdsn_depth(
 	struct se_node_acl *se_nacl,
 	char *page)
@@ -817,6 +848,7 @@ TF_NACL_BASE_ATTR(lio_target, cmdsn_depth, S_IRUGO | S_IWUSR);
 
 static struct configfs_attribute *lio_target_initiator_attrs[] = {
 	&lio_target_nacl_info.attr,
+	&lio_target_nacl_sessions.attr,
 	&lio_target_nacl_cmdsn_depth.attr,
 	NULL,
 };

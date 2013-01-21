@@ -37,6 +37,7 @@
 #include <linux/syscalls.h>
 #include <linux/configfs.h>
 #include <linux/spinlock.h>
+#include <linux/debugfs.h>
 
 #include <target/target_core_base.h>
 #include <target/target_core_backend.h>
@@ -51,6 +52,9 @@
 #include "target_core_rd.h"
 
 extern struct t10_alua_lu_gp *default_lu_gp;
+
+struct dentry *target_debugfs_root;
+EXPORT_SYMBOL(target_debugfs_root);
 
 static LIST_HEAD(g_tf_list);
 static DEFINE_MUTEX(g_tf_lock);
@@ -3196,7 +3200,16 @@ static int __init target_core_init_configfs(void)
 	if (core_dev_setup_virtual_lun0() < 0)
 		goto out;
 
+	target_debugfs_root = debugfs_create_dir("target", NULL);
+	if (!target_debugfs_root) {
+		ret = -ENOMEM;
+		goto out_lun0;
+	}
+
 	return 0;
+
+out_lun0:
+	core_dev_release_virtual_lun0();
 
 out:
 	configfs_unregister_subsystem(subsys);
@@ -3224,6 +3237,8 @@ static void __exit target_core_exit_configfs(void)
 	struct config_group *hba_cg, *alua_cg, *lu_gp_cg;
 	struct config_item *item;
 	int i;
+
+	debugfs_remove_recursive(target_debugfs_root);
 
 	subsys = target_core_subsystem[0];
 

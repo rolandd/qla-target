@@ -976,4 +976,6 @@ struct se_wwn {
 #define PURE_REVISION	"100 "
 #define PURE_OUI        0x24A937
 
+extern struct dentry *target_debugfs_root;
+
 #endif /* TARGET_CORE_BASE_H */

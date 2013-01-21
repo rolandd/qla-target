@@ -39,6 +39,7 @@
 #include <linux/ctype.h>
 #include <linux/string.h>
 #include <linux/ctype.h>
+#include <linux/debugfs.h>
 #include <asm/unaligned.h>
 #include <scsi/scsi.h>
 #include <scsi/scsi_host.h>
@@ -1771,6 +1772,41 @@ static int tcm_qla2xxx_lport_register_cb(struct scsi_qla_host *vha)
 	return 0;
 }
 
+static int sessions_debugfs_open(struct inode *inode, struct file *filp)
+{
+	struct tcm_qla2xxx_lport *lport = inode->i_private;
+	int size = 8 * PAGE_SIZE;
+
+	filp->private_data = kzalloc(size, GFP_KERNEL);
+	if (!filp->private_data)
+		return -ENOMEM;
+
+	qla_tgt_dump_port_database(lport->qla_vha, filp->private_data, size);
+
+	return 0;
+}
+
+static int sessions_debugfs_close(struct inode *inode, struct file *filp)
+{
+	kfree(filp->private_data);
+	return 0;
+}
+
+static ssize_t sessions_debugfs_read(struct file *filp, char __user *buf, size_t count,
+				     loff_t *ppos)
+{
+	return simple_read_from_buffer(buf, count, ppos, filp->private_data,
+				       strlen(filp->private_data));
+}
+
+static const struct file_operations sessions_debugfs_fops = {
+	.owner		= THIS_MODULE,
+	.open		= sessions_debugfs_open,
+	.release	= sessions_debugfs_close,
+	.read		= sessions_debugfs_read,
+	.llseek		= default_llseek,
+};
+
 static struct se_wwn *tcm_qla2xxx_make_lport(
 	struct target_fabric_configfs *tf,
 	struct config_group *group,
@@ -1778,6 +1814,7 @@ static struct se_wwn *tcm_qla2xxx_make_lport(
 {
 	struct tcm_qla2xxx_lport *lport;
 	u64 wwpn;
+	char *sessions_name;
 	int ret = -ENODEV;
 
 	if (tcm_qla2xxx_parse_wwn(name, &wwpn, 1) < 0)
@@ -1800,6 +1837,13 @@ static struct se_wwn *tcm_qla2xxx_make_lport(
 				tcm_qla2xxx_lport_register_cb, lport);
 	if (ret != 0)
 		goto out_lport;
+
+	sessions_name = kasprintf(GFP_KERNEL, "qla2xxx-sessions-%ld", lport->qla_vha->host_no);
+	if (sessions_name)
+		lport->sessions_dentry = debugfs_create_file(sessions_name, S_IRUGO,
+							     target_debugfs_root, lport,
+							     &sessions_debugfs_fops);
+	kfree(sessions_name);
 
 	return &lport->lport_wwn;
 out_lport:
@@ -1830,6 +1874,9 @@ static void tcm_qla2xxx_drop_lport(struct se_wwn *wwn)
 	struct scsi_qla_host *vha = lport->qla_vha;
 	struct qla_hw_data *ha = vha->hw;
 
+	if (lport->sessions_dentry)
+		debugfs_remove(lport->sessions_dentry);
+
 	/*
 	 * Call into qla2x_target.c LLD logic to complete the
 	 * shutdown of struct qla_tgt after the call to
@@ -1852,6 +1899,7 @@ static struct se_wwn *tcm_qla2xxx_npiv_make_lport(
 {
 	struct tcm_qla2xxx_lport *lport;
 	u64 npiv_wwpn, npiv_wwnn;
+	char *sessions_name;
 	int ret;
 
 	if (tcm_qla2xxx_npiv_parse_wwn(name, strlen(name)+1,
@@ -1875,6 +1923,13 @@ static struct se_wwn *tcm_qla2xxx_npiv_make_lport(
 	if (ret != 0)
 		goto out;
 
+	sessions_name = kasprintf(GFP_KERNEL, "sessions-%ld", lport->qla_vha->host_no);
+	if (sessions_name)
+		lport->sessions_dentry = debugfs_create_file(sessions_name, S_IRUGO,
+							     target_debugfs_root, lport,
+							     &sessions_debugfs_fops);
+	kfree(sessions_name);
+
 	return &lport->lport_wwn;
 out:
 	kfree(lport);
@@ -1887,6 +1942,9 @@ static void tcm_qla2xxx_npiv_drop_lport(struct se_wwn *wwn)
 			struct tcm_qla2xxx_lport, lport_wwn);
 	struct scsi_qla_host *vha = lport->qla_vha;
 	struct Scsi_Host *sh = vha->host;
+
+	if (lport->sessions_dentry)
+		debugfs_remove(lport->sessions_dentry);
 	/*
 	 * Notify libfc that we want to release the lport->npiv_vport
 	 */

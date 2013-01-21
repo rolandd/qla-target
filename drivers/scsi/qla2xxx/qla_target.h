@@ -930,6 +930,7 @@ extern int qla_tgt_remove_target(struct qla_hw_data *, struct scsi_qla_host *);
 extern int qla_tgt_lport_register(struct qla_tgt_func_tmpl *, u64,
 			int (*callback)(struct scsi_qla_host *), void *);
 extern void qla_tgt_lport_deregister(struct scsi_qla_host *);
+extern void qla_tgt_dump_port_database(struct scsi_qla_host *, char *, int);
 extern void qla_tgt_unreg_sess(struct qla_tgt_sess *);
 extern void qla_tgt_undelete_sess(struct qla_tgt_sess *sess);
 extern void qla_tgt_fc_port_added(struct scsi_qla_host *, fc_port_t *);

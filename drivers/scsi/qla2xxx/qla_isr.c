@@ -1268,6 +1268,16 @@ qla24xx_logio_entry(scsi_qla_host_t *vha, struct req_que *req,
 		break;
 	}
 
+	dev_info(&vha->hw->pdev->dev, "qla2xxx(%d) host %lu: "
+		 "Async-%s failed - portid=%02x%02x%02x comp=%x "
+		 "iop0=%x iop1=%x.\n",
+		 vha->vp_idx, vha->host_no,
+		 type, fcport->d_id.b.domain,
+		 fcport->d_id.b.area, fcport->d_id.b.al_pa,
+		 le16_to_cpu(logio->comp_status),
+		 le32_to_cpu(logio->io_parameter[0]),
+		 le32_to_cpu(logio->io_parameter[1]));
+
 	ql_dbg(ql_dbg_async, vha, 0x5037,
 	    "Async-%s failed - portid=%02x%02x%02x comp=%x "
 	    "iop0=%x iop1=%x.\n",

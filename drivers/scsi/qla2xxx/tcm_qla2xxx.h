@@ -81,4 +81,5 @@ struct tcm_qla2xxx_lport {
 	struct tcm_qla2xxx_tpg *tpg_1;
 	/* Returned by tcm_qla2xxx_make_lport() */
 	struct se_wwn lport_wwn;
+	struct dentry *sessions_dentry;
 };
