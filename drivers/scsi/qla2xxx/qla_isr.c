@@ -314,6 +314,48 @@ qla81xx_idc_event(scsi_qla_host_t *vha, uint16_t aen, uint16_t descr)
 		    "IDC failed to post ACK.\n");
 }
 
+static const char *qla_port_update_state(uint16_t state)
+{
+	switch (state) {
+	case 4: return "PLOGI complete";
+	case 6: return "PRLI complete";
+	case 7: return "port logged out";
+	default: return "unknown";
+	}
+}
+
+static const char* qla_port_update_reason(uint16_t reason)
+{
+	switch (reason >> 8) {
+	case 0x00: return "link initialized";
+	case 0x01: return "implicit LOGO due to ACC conflict";
+	case 0x02: return "implicit LOGO due to reject";
+	case 0x03: return "implicit LOGO due to request conflict";
+	case 0x04: return "PLOGI received";
+	case 0x05: return "PLOGI reject";
+	case 0x06: return "PRLI received";
+	case 0x07: return "PRLI reject";
+	case 0x08: return "global TPRLO";
+	case 0x09: return "selective TPRLO";
+	case 0x0a: return "PRLO received";
+	case 0x0b: return "LOGO received";
+	case 0x0c: return "topology change";
+	case 0x0d: return "N_Port ID change";
+	case 0x0e: return "FLOGI reject received";
+	case 0x0f: return "bad FAN received";
+	case 0x10: return "FLOGI timeout";
+	case 0x11: return "ABTS-to-ABTS-LOGO ER failed";
+	case 0x12: return "PLOGI completed";
+	case 0x13: return "PRLI completed";
+	case 0x14: return "received own OPN frame xmit";
+	case 0x15: return "received own OPN data xmit";
+	case 0x16: return "xmit error";
+	case 0x17: return "explicit LOGO";
+	case 0x18: return "ADISC/PDISC timeout";
+	default: return "unknown";
+	}
+}
+
 /**
  * qla2x00_async_event() - Process aynchronous events.
  * @ha: SCSI driver HA context
@@ -623,8 +665,11 @@ skip_rio:
 
 	case MBA_PORT_UPDATE:		/* Port database update */
 		ql_log(ql_log_info, vha, 0,
-		       "PORT UPDATE %04x %04x %04x.\n",
-		       mb[1], mb[2], mb[3]);
+		       "PORT UPDATE loop_id:0x%04x state 0x%x/%s reason 0x%x/%s\n",
+		       mb[1],
+		       mb[2], qla_port_update_state(mb[2]),
+		       mb[3], qla_port_update_reason(mb[3]));
+
 		/*
 		 * Handle only global and vn-port update events
 		 *
@@ -718,8 +763,8 @@ skip_rio:
 			break;
 
 		ql_log(ql_log_info, vha, 0x5013,
-		    "RSCN database changed -- %04x %04x %04x.\n",
-		    mb[1], mb[2], mb[3]);
+		       "RSCN database changed -- s_id: %02x:%02x:%02x\n",
+		       mb[1] & 0xff, mb[2] >> 8, mb[2] & 0xff);
 
 		rscn_entry = ((mb[1] & 0xff) << 16) | mb[2];
 		host_pid = (vha->d_id.b.domain << 16) | (vha->d_id.b.area << 8)

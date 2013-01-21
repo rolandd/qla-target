@@ -1321,9 +1321,12 @@ static void tcm_qla2xxx_set_sess_by_s_id(
 	key = (((unsigned long)s_id[0] << 16) |
 	       ((unsigned long)s_id[1] << 8) |
 	       (unsigned long)s_id[2]);
-	pr_info("set_sess_by_s_id: %p %06x\n", se_sess, key);
 
 	slot = radix_tree_lookup(&lport->_lport_fcport_map, key);
+
+	dev_info(&lport->qla_vha->hw->pdev->dev, "set_sess_by_s_id: se_sess %p / sess %p %02x:%02x:%02x initiatorname: %s (have slot %d)\n",
+		 se_sess, qla_tgt_sess, s_id[0], s_id[1], s_id[2], new_se_nacl->initiatorname, !!slot);
+
 	if (!slot) {
 		pr_debug("Setting up new fc_port entry to new_se_nacl\n");
 		nacl->nport_id = key;
@@ -1338,21 +1341,15 @@ static void tcm_qla2xxx_set_sess_by_s_id(
 	}
 
 	if (nacl->qla_tgt_sess) {
-		pr_info("Replacing existing nacl->qla_tgt_sess and fc_port entry\n");
 		radix_tree_update(&lport->_lport_fcport_map, key, new_se_nacl);
 		qla_tgt_sess->se_sess = se_sess;
 		nacl->qla_tgt_sess = qla_tgt_sess;
 		return;
 	}
 
-	pr_info("Replacing existing fc_port entry w/o active nacl->qla_tgt_sess\n");
 	radix_tree_update(&lport->_lport_fcport_map, key, new_se_nacl);
 	qla_tgt_sess->se_sess = se_sess;
 	nacl->qla_tgt_sess = qla_tgt_sess;
-
-	pr_info("Setup nacl->qla_tgt_sess %p by s_id for se_nacl: %p, initiatorname: %s\n",
-			nacl->qla_tgt_sess, new_se_nacl,
-			new_se_nacl->initiatorname);
 }
 
 static void tcm_qla2xxx_clear_sess_by_s_id(
@@ -1370,24 +1367,25 @@ static void tcm_qla2xxx_clear_sess_by_s_id(
 	key = (((unsigned long)s_id[0] << 16) |
 	       ((unsigned long)s_id[1] << 8) |
 	       (unsigned long)s_id[2]);
-	pr_info("clear_sess_by_s_id: %p %06x\n", se_sess, key);
 
 	slot = radix_tree_lookup(&lport->_lport_fcport_map, key);
+
+	dev_info(&lport->qla_vha->hw->pdev->dev,
+		 "clear_sess_by_s_id: s_id %02x:%02x:%02x, se_sess %p / sess %p (have slot %d)\n",
+		 s_id[0], s_id[1], s_id[2], se_sess, qla_tgt_sess, !!slot);
+
 	if (!slot) {
-		pr_info("Wiping nonexisting fc_port entry\n");
 		qla_tgt_sess->se_sess = se_sess;
 		nacl->qla_tgt_sess = qla_tgt_sess;
 		return;
 	}
 
 	if (nacl->qla_tgt_sess) {
-		pr_info("Clearing existing nacl->qla_tgt_sess and fc_port entry\n");
 		radix_tree_delete(&lport->_lport_fcport_map, key);
 		nacl->qla_tgt_sess = NULL;
 		return;
 	}
 
-	pr_info("Clearing existing fc_port entry\n");
 	radix_tree_delete(&lport->_lport_fcport_map, key);
 	return;
 }
@@ -1447,14 +1445,15 @@ static void tcm_qla2xxx_set_sess_by_loop_id(
 	struct tcm_qla2xxx_fc_loopid *fc_loopid;
 
 	BUG_ON(!new_se_nacl);
-	pr_info("set_sess_by_loop_id: Using loop_id: %p 0x%04x\n", se_sess,
-			loop_id);
 
 	fc_loopid = &((struct tcm_qla2xxx_fc_loopid *)lport->lport_loopid_map)[loop_id];
-
 	saved_nacl = fc_loopid->se_nacl;
+
+	dev_info(&lport->qla_vha->hw->pdev->dev,
+		 "set_sess_by_loop_id: loop_id 0x%04x, se_sess %p / sess %p (have saved_nacl %d)\n",
+		 loop_id, se_sess, qla_tgt_sess, !!saved_nacl);
+
 	if (!saved_nacl) {
-		pr_info("Setting up new fc_loopid->se_nacl to new_se_nacl\n");
 		fc_loopid->se_nacl = new_se_nacl;
 		if (qla_tgt_sess->se_sess != se_sess)
 			qla_tgt_sess->se_sess = se_sess;
@@ -1464,7 +1463,6 @@ static void tcm_qla2xxx_set_sess_by_loop_id(
 	}
 
 	if (nacl->qla_tgt_sess) {
-		pr_info("Replacing existing nacl->qla_tgt_sess and fc_loopid->se_nacl\n");
 		fc_loopid->se_nacl = new_se_nacl;
 		if (qla_tgt_sess->se_sess != se_sess)
 			qla_tgt_sess->se_sess = se_sess;
@@ -1497,14 +1495,15 @@ static void tcm_qla2xxx_clear_sess_by_loop_id(
 	struct tcm_qla2xxx_fc_loopid *fc_loopid;
 
 	BUG_ON(new_se_nacl);
-	pr_info("clear_sess_by_loop_id: Using loop_id: %p 0x%04x\n", se_sess,
-			loop_id);
 
 	fc_loopid = &((struct tcm_qla2xxx_fc_loopid *)lport->lport_loopid_map)[loop_id];
-
 	saved_nacl = fc_loopid->se_nacl;
+
+	dev_info(&lport->qla_vha->hw->pdev->dev,
+		 "clear_sess_by_loop_id: loop_id 0x%04x, se_sess %p / sess %p (have saved_nacl %d)\n",
+		 loop_id, se_sess, qla_tgt_sess, !!saved_nacl);
+
 	if (!saved_nacl) {
-		pr_info("Setting up new fc_loopid->se_nacl to new_se_nacl\n");
 		fc_loopid->se_nacl = new_se_nacl;
 		if (qla_tgt_sess->se_sess != se_sess)
 			qla_tgt_sess->se_sess = se_sess;
@@ -1514,13 +1513,11 @@ static void tcm_qla2xxx_clear_sess_by_loop_id(
 	}
 
 	if (nacl->qla_tgt_sess) {
-		pr_info("Clearing nacl->qla_tgt_sess and fc_loopid->se_nacl\n");
 		fc_loopid->se_nacl = NULL;
 		nacl->qla_tgt_sess = NULL;
 		return;
 	}
 
-	pr_info("Clearing fc_loopid->se_nacl\n");
 	fc_loopid->se_nacl = NULL;
 	return;
 }
@@ -1663,7 +1660,7 @@ static void tcm_qla2xxx_update_sess(struct qla_tgt_sess *sess, port_id_t s_id,
 
 
 	if (sess->loop_id != loop_id || sess->s_id.b24 != s_id.b24)
-		pr_info("Updating session %p from port %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x loop_id %d -> %d s_id %x:%x:%x -> %x:%x:%x\n",
+		dev_info(&ha->pdev->dev, "Updating session %p from port %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x loop_id %d -> %d s_id %x:%x:%x -> %x:%x:%x\n",
 			sess,
 			sess->port_name[0], sess->port_name[1],
 			sess->port_name[2], sess->port_name[3],

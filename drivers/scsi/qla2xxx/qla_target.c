@@ -329,7 +329,14 @@ static void qla_tgt_free_session_done(struct work_struct *work)
 	struct scsi_qla_host *vha = sess->vha;
 	struct qla_hw_data *ha = vha->hw;
 
-	pr_info("%s(%p)\n", __func__, sess);
+	dev_info(&ha->pdev->dev, "%s: se_sess %p / sess %p from port %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x loop_id 0x%04x\n",
+		 __func__, sess->se_sess, sess,
+		 sess->port_name[0], sess->port_name[1],
+		 sess->port_name[2], sess->port_name[3],
+		 sess->port_name[4], sess->port_name[5],
+		 sess->port_name[6], sess->port_name[7],
+		 sess->loop_id);
+
 	BUG_ON(!tgt);
 	/*
 	 * Release the target session for FC Nexus from fabric module code.
@@ -401,14 +408,15 @@ static int qla_tgt_reset(struct scsi_qla_host *vha, void *iocb, int mcmd)
 		return res;
 	}
 
-	printk(KERN_INFO "scsi(%ld): resetting (session %p from port "
-		"%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, "
-		"mcmd %x, loop_id %d)\n", vha->host_no, sess,
-		sess->port_name[0], sess->port_name[1],
-		sess->port_name[2], sess->port_name[3],
-		sess->port_name[4], sess->port_name[5],
-		sess->port_name[6], sess->port_name[7],
-		mcmd, loop_id);
+	dev_info(&ha->pdev->dev,
+		 "resetting (se_sess %p / sess %p) from port "
+		 "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, "
+		 "mcmd %x, loop_id %d)\n", sess->se_sess, sess,
+		 sess->port_name[0], sess->port_name[1],
+		 sess->port_name[2], sess->port_name[3],
+		 sess->port_name[4], sess->port_name[5],
+		 sess->port_name[6], sess->port_name[7],
+		 mcmd, loop_id);
 
 	lun = a->u.isp24.fcp_cmnd.lun;
 	unpacked_lun = scsilun_to_int((struct scsi_lun *)&lun);
@@ -435,10 +443,10 @@ static void qla_tgt_schedule_sess_for_deletion(struct qla_tgt_sess *sess)
 	sess->expires = jiffies;
 
 	dev_info(&sess->vha->hw->pdev->dev,
-		 "qla_target(%d) host %lu: session %p for port %02x:%02x:%02x:"
-		 "%02x:%02x:%02x:%02x:%02x (loop ID %d) scheduled for "
+		 "qla_target(%d) host %lu: se_sess %p / sess %p for port %02x:%02x:%02x:"
+		 "%02x:%02x:%02x:%02x:%02x (loop ID 0x%04x) scheduled for "
 		 "deletion in %u secs (expires: %lu)\n",
-		 sess->vha->vp_idx, tgt->vha->host_no, sess,
+		 sess->vha->vp_idx, tgt->vha->host_no, sess->se_sess, sess,
 		 sess->port_name[0], sess->port_name[1],
 		 sess->port_name[2], sess->port_name[3],
 		 sess->port_name[4], sess->port_name[5],
@@ -591,7 +599,6 @@ static void qla_tgt_del_sess_work_fn(struct delayed_work *work)
 
 			ql_dbg(ql_dbg_tgt_mgt, vha, 0xe107, "Timeout: sess %p"
 				" about to be deleted\n", sess);
-			printk("Releasing qla_tgt_del_sess_work_fn w/o hardware_lock >>>>>>>>>>>>\n");
 			ha->tgt_ops->shutdown_sess(sess);
 			ha->tgt_ops->put_sess(sess);
 		} else {
@@ -621,10 +628,10 @@ static struct qla_tgt_sess *qla_tgt_create_sess(
 	spin_lock_irqsave(&ha->hardware_lock, flags);
 	sess = qla_tgt_find_sess_by_port_name(ha->qla_tgt, fcport->port_name);
 	if (sess) {
-		ql_dbg(ql_dbg_tgt_mgt, vha, 0xe108, "Double sess %p"
+		ql_dbg(ql_dbg_tgt_mgt, vha, 0xe108, "Double se_sess %p / sess %p"
 		       " found (s_id %x:%x:%x, "
 		       "loop_id %d), updating to d_id %x:%x:%x, "
-		       "loop_id %d", sess, sess->s_id.b.domain,
+		       "loop_id %d", sess->se_sess, sess, sess->s_id.b.domain,
 		       sess->s_id.b.al_pa, sess->s_id.b.area,
 		       sess->loop_id, fcport->d_id.b.domain,
 		       fcport->d_id.b.al_pa, fcport->d_id.b.area,
@@ -695,10 +702,10 @@ static struct qla_tgt_sess *qla_tgt_create_sess(
 	ha->qla_tgt->sess_count++;
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
-	dev_info(&ha->pdev->dev, "qla_target(%d) host %lu: %ssession %p for "
+	dev_info(&ha->pdev->dev, "qla_target(%d) host %lu: (%s) se_sess %p / sess %p for "
 		 "wwn %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x (loop_id "
 		 "%d, s_id %x:%x:%x, confirmed completion %ssupported) added\n",
-		 vha->vp_idx, vha->host_no, local ? "local " : "", sess,
+		 vha->vp_idx, vha->host_no, local ? "local" : "", sess->se_sess, sess,
 		 fcport->port_name[0], fcport->port_name[1],
 		 fcport->port_name[2], fcport->port_name[3], fcport->port_name[4],
 		 fcport->port_name[5], fcport->port_name[6], fcport->port_name[7],
@@ -744,27 +751,23 @@ void qla_tgt_fc_port_added(struct scsi_qla_host *vha, fc_port_t *fcport)
 		if (sess->deleted) {
 			qla_tgt_undelete_sess(sess);
 
-			printk(KERN_INFO "qla_target(%u): %ssession %p for port %02x:"
-				"%02x:%02x:%02x:%02x:%02x:%02x:%02x (loop ID %d) "
-				"reappeared\n", vha->vp_idx,
-				sess->local ? "local " : "", sess,
-				sess->port_name[0],
-				sess->port_name[1], sess->port_name[2],
-				sess->port_name[3], sess->port_name[4],
-				sess->port_name[5], sess->port_name[6],
-				sess->port_name[7], sess->loop_id);
-
-			ql_dbg(ql_dbg_tgt_mgt, vha, 0xe10a, "Reappeared sess %p\n", sess);
+			dev_info(&ha->pdev->dev, "%s se_sess %p / sess %p for port %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x (loop ID %d) reappeared\n",
+				 sess->local ? "local " : "", sess->se_sess, sess,
+				 sess->port_name[0],
+				 sess->port_name[1], sess->port_name[2],
+				 sess->port_name[3], sess->port_name[4],
+				 sess->port_name[5], sess->port_name[6],
+				 sess->port_name[7], sess->loop_id);
 		}
 		ha->tgt_ops->update_sess(sess, fcport->d_id, fcport->loop_id,
 					 fcport->conf_compl_supported);
 	}
 
 	if (sess && sess->local) {
-		dev_info(&ha->pdev->dev, "qla_target(%u) host %lu: local session %p for "
+		dev_info(&ha->pdev->dev, "qla_target(%u) host %lu: local se_sess %p / sess %p for "
 			 "port %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x "
 			 "(loop ID %d) became global\n", vha->vp_idx, vha->host_no,
-			 sess,
+			 sess->se_sess, sess,
 			 fcport->port_name[0], fcport->port_name[1],
 			 fcport->port_name[2], fcport->port_name[3],
 			 fcport->port_name[4], fcport->port_name[5],
@@ -1110,8 +1113,8 @@ static void qla_tgt_24xx_retry_term_exchange(struct scsi_qla_host *vha,
 	ctio->u.status1.flags =
 		__constant_cpu_to_le16(CTIO7_FLAGS_STATUS_MODE_1 | CTIO7_FLAGS_TERMINATE);
 	ctio->u.status1.ox_id = entry->fcp_hdr_le.ox_id;
-	pr_info("Terminate CTIO exch addr %x ox_id %x\n",
-		ctio->exchange_addr, ctio->u.status1.ox_id);
+	dev_info(&vha->hw->pdev->dev, "Terminate CTIO exch addr %x ox_id %x\n",
+		 ctio->exchange_addr, ctio->u.status1.ox_id);
 
 	qla2x00_isp_cmd(vha, vha->req);
 
@@ -2092,7 +2095,7 @@ static int __qla_tgt_send_term_exchange(struct scsi_qla_host *vha, struct qla_tg
 	ctio24->u.status1.flags = (atio->u.isp24.attr << 9) | __constant_cpu_to_le16(
 		CTIO7_FLAGS_STATUS_MODE_1 | CTIO7_FLAGS_TERMINATE);
 	ctio24->u.status1.ox_id = swab16(atio->u.isp24.fcp_hdr.ox_id);
-	pr_info("Terminate CTIO cmd %p loop_id %x exch addr %x ox_id %x\n",
+	dev_info(&ha->pdev->dev, "Terminate CTIO cmd %p loop_id %x exch addr %x ox_id %x\n",
 		cmd, cmd ? cmd->loop_id : CTIO7_NHANDLE_UNRECOGNIZED,
 		ctio24->exchange_addr, ctio24->u.status1.ox_id);
 
@@ -2341,7 +2344,7 @@ static void qla_tgt_do_ctio_completion(struct scsi_qla_host *vha, uint32_t handl
 		case CTIO_TIMEOUT:
 		case CTIO_INVALID_RX_ID:
 			/* They are OK */
-			printk(KERN_INFO "qla_target(%d): CTIO with "
+			dev_info(&ha->pdev->dev, "qla_target(%d): CTIO with "
 				"status %#x received, state %x, se_cmd %p, "
 				"(LIP_RESET=e, ABORTED=2, TARGET_RESET=17, "
 				"TIMEOUT=b, INVALID_RX_ID=8)\n", vha->vp_idx,
@@ -2350,14 +2353,14 @@ static void qla_tgt_do_ctio_completion(struct scsi_qla_host *vha, uint32_t handl
 
 		case CTIO_PORT_LOGGED_OUT:
 		case CTIO_PORT_UNAVAILABLE:
-			printk(KERN_INFO "qla_target(%d): CTIO with PORT LOGGED "
+			dev_info(&ha->pdev->dev, "qla_target(%d): CTIO with PORT LOGGED "
 				"OUT (29) or PORT UNAVAILABLE (28) status %x "
 				"received (state %x, se_cmd %p)\n",
 				vha->vp_idx, status, cmd->state, se_cmd);
 			break;
 
 		case CTIO_SRR_RECEIVED:
-			printk(KERN_INFO "qla_target(%d): CTIO with SRR_RECEIVED"
+			dev_info(&ha->pdev->dev, "qla_target(%d): CTIO with SRR_RECEIVED"
 				" status %x received (state %x, se_cmd %p)\n",
 				vha->vp_idx, status, cmd->state, se_cmd);
 			if (qla_tgt_prepare_srr_ctio(vha, cmd, ctio) != 0)
@@ -2366,7 +2369,7 @@ static void qla_tgt_do_ctio_completion(struct scsi_qla_host *vha, uint32_t handl
 				return;
 
 		default:
-			printk(KERN_ERR "qla_target(%d): CTIO with error status "
+			dev_err(&ha->pdev->dev, "qla_target(%d): CTIO with error status "
 				"0x%x received (state %x, se_cmd %p\n",
 				vha->vp_idx, status, cmd->state, se_cmd);
 			break;
@@ -2473,7 +2476,7 @@ void qla_tgt_flush_ctio(scsi_qla_host_t *vha)
 
 		if (cmd) {
 			struct se_cmd * se_cmd = &cmd->se_cmd;
-			pr_info("Aborting cmd %p: state=%d t_state=%d transport "
+			dev_info(&ha->pdev->dev, "Aborting cmd %p: state=%d t_state=%d transport "
 				"state=0x%x cdb[0]=%d ps_opcode=%d", cmd, cmd->state,
 				se_cmd->t_state, se_cmd->transport_state,
 				se_cmd->t_task_cdb ? se_cmd->t_task_cdb[0] : 0,
@@ -2773,8 +2776,9 @@ static int qla_tgt_issue_task_mgmt(struct qla_tgt_sess *sess, uint32_t lun,
 		break;
 #endif
 	default:
-		printk(KERN_ERR "qla_target(%d): Unknown task mgmt fn 0x%x\n",
-			    sess->vha->vp_idx, fn);
+		if (fn != QLA_TGT_NEXUS_LOSS_SESS)
+			dev_info(&vha->hw->pdev->dev, "Unknown task mgmt fn 0x%x\n",
+				 fn);
 		WARN_ON(work_pending(&mcmd->se_cmd.work));
 		ha->tgt_ops->put_sess(mcmd->sess);
 		mempool_free(mcmd, qla_tgt_mgmt_cmd_mempool);
@@ -2914,10 +2918,10 @@ static int qla_tgt_24xx_handle_els(struct scsi_qla_host *vha,
 	int res = 0;
 
 	assert_spin_locked(&ha->hardware_lock);
-	ql_dbg(ql_dbg_tgt_mgt, vha, 0xe12a, "qla_target(%d): Port ID: 0x%02x:%02x:%02x"
-		" ELS opcode: 0x%02x\n", vha->vp_idx, iocb->u.isp24.port_id[0],
-		iocb->u.isp24.port_id[1], iocb->u.isp24.port_id[2],
-		iocb->u.isp24.status_subcode);
+	dev_info(&ha->pdev->dev, "ELS imm notify 0x%02x: (nport valid %d) loop_id 0x%04x s_id %02x:%02x:%02x\n",
+		 iocb->u.isp24.status_subcode,
+		 !!(iocb->u.isp24.flags & 4), iocb->u.isp24.nport_handle,
+		 iocb->u.isp24.port_id[2], iocb->u.isp24.port_id[1], iocb->u.isp24.port_id[0]);
 
 	switch (iocb->u.isp24.status_subcode) {
 	case ELS_PLOGI:
@@ -3619,10 +3623,10 @@ static void qla_tgt_24xx_atio_pkt(struct scsi_qla_host *vha, atio_from_isp_t *at
 #endif
 			} else {
 				if (tgt->tgt_stop) {
-					printk(KERN_INFO "qla_target: Unable to send "
+					dev_info(&ha->pdev->dev, "qla_target: Unable to send "
 					"command to target for req, ignoring \n");
 				} else {
-					printk(KERN_INFO "qla_target(%d): Unable to send "
+					dev_info(&ha->pdev->dev, "qla_target(%d): Unable to send "
 					   "command to target, sending BUSY status\n",
 					   vha->vp_idx);
 					qla_tgt_send_busy(vha, atio, SAM_STAT_BUSY);
