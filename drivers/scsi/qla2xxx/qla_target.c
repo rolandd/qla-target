@@ -808,12 +808,11 @@ void qla_tgt_fc_port_added(struct scsi_qla_host *vha, fc_port_t *fcport)
 		mutex_lock(&ha->tgt_mutex);
 		sess = qla_tgt_create_sess(vha, fcport, false);
 		mutex_unlock(&ha->tgt_mutex);
-		/* put the extra creation ref */
-		if (sess != NULL)
-			if (ha->tgt_ops->put_sess(sess) != 0)
-				return;
+
 		spin_lock_irqsave(&ha->hardware_lock, flags);
 	} else {
+		kref_get(&sess->se_sess->sess_kref);
+
 		if (sess->deleted) {
 			qla_tgt_undelete_sess(sess);
 
@@ -847,6 +846,8 @@ void qla_tgt_fc_port_added(struct scsi_qla_host *vha, fc_port_t *fcport)
 		sess->local = 0;
 	}
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
+
+	ha->tgt_ops->put_sess(sess);
 }
 
 void qla_tgt_fc_port_deleted(struct scsi_qla_host *vha, fc_port_t *fcport)

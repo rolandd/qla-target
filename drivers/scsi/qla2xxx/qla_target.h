@@ -645,7 +645,7 @@ struct qla_tgt_func_tmpl {
 	struct qla_tgt_sess *(*find_sess_by_s_id)(struct scsi_qla_host *,
 						const uint8_t *);
 	void (*clear_nacl_from_fcport_map)(struct qla_tgt_sess *);
-	int (*put_sess)(struct qla_tgt_sess *);
+	void (*put_sess)(struct qla_tgt_sess *);
 	void (*shutdown_sess)(struct qla_tgt_sess *);
 };
 

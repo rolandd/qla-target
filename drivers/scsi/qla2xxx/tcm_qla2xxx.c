@@ -934,9 +934,9 @@ void tcm_qla2xxx_clear_nacl_from_fcport_map(struct qla_tgt_sess *sess)
 			       nacl->nport_id);
 }
 
-int tcm_qla2xxx_put_sess(struct qla_tgt_sess *sess)
+void tcm_qla2xxx_put_sess(struct qla_tgt_sess *sess)
 {
-	return target_put_session(sess->se_sess);
+	target_put_session(sess->se_sess);
 }
 
 void tcm_qla2xxx_shutdown_sess(struct qla_tgt_sess *sess)
