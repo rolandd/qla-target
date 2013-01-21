@@ -1067,11 +1067,31 @@ static ssize_t reset_store(struct device *dev,
 	return count;
 }
 
+static ssize_t physical_slot_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct pci_dev *pdev = to_pci_dev(dev);
+	int len, pcie_cap;
+	u32 slot;
+
+	pcie_cap = pci_pcie_cap(pdev);
+	pci_read_config_dword(pdev, pcie_cap + PCI_EXP_SLTCAP, &slot);
+	/* Physical Slot Number: PCI_EXP_SLTCAP_PSN = 0xfff80000 */
+	slot = slot >> 19;
+
+	len = sprintf(buf, "%u", slot);
+	buf[len++] = '\n';
+	buf[len] = '\0';
+	return len;
+}
+
+
 static struct device_attribute reset_attr = __ATTR(reset, 0200, NULL, reset_store);
+static struct device_attribute physical_slot = __ATTR_RO(physical_slot);
 
 static int pci_create_capabilities_sysfs(struct pci_dev *dev)
 {
-	int retval;
+	int retval, pcie_cap;
 	struct bin_attribute *attr;
 
 	/* If the device has VPD, try to expose it in sysfs. */
@@ -1092,6 +1112,18 @@ static int pci_create_capabilities_sysfs(struct pci_dev *dev)
 			return retval;
 		}
 		dev->vpd->attr = attr;
+	}
+
+	/* If the device has PCIe capabilities, expose it in sysfs */
+	pcie_cap = pci_pcie_cap(dev);
+	if (pcie_cap) {
+		u16 pcie_flags;
+		pci_read_config_word(dev, pcie_cap + PCI_EXP_FLAGS, &pcie_flags);
+		if (pcie_flags & PCI_EXP_FLAGS_SLOT) {
+			retval = device_create_file(&dev->dev, &physical_slot);
+			if (retval)
+				return retval;
+		}
 	}
 
 	/* Active State Power Management */
