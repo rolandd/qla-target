@@ -521,9 +521,11 @@ void core_clear_lun_from_tpg(struct se_lun *lun, struct se_portal_group *tpg)
 	spin_unlock_irq(&tpg->acl_node_lock);
 }
 
-static struct se_port *core_alloc_port(struct se_device *dev)
+static struct se_port *core_alloc_port(struct se_device *dev,
+				       struct se_portal_group *tpg)
 {
 	struct se_port *port, *port_tmp;
+	bool called_rtpi = false;
 
 	port = kzalloc(sizeof(struct se_port), GFP_KERNEL);
 	if (!port) {
@@ -556,7 +558,13 @@ again:
 	 * 2h        Relative port 2, historically known as port B
 	 * 3h to FFFFh    Relative port 3 through 65 535
 	 */
-	port->sep_rtpi = dev->dev_rpti_counter++;
+	if (tpg->se_tpg_tfo->tpg_get_rtpi && !called_rtpi) {
+		port->sep_rtpi = tpg->se_tpg_tfo->tpg_get_rtpi(tpg);
+		called_rtpi = true;
+	} else {
+		port->sep_rtpi = dev->dev_rpti_counter++;
+	}
+
 	if (!port->sep_rtpi)
 		goto again;
 
@@ -641,7 +649,7 @@ int core_dev_export(
 {
 	struct se_port *port;
 
-	port = core_alloc_port(dev);
+	port = core_alloc_port(dev, tpg);
 	if (IS_ERR(port))
 		return PTR_ERR(port);
 

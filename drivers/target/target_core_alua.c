@@ -40,6 +40,16 @@
 #include "target_core_alua.h"
 #include "target_core_ua.h"
 
+static unsigned ports_per_controller = 16;
+module_param(ports_per_controller, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(ports_per_controller,
+		 "Target ports to report per controller (for REPORT TARGET PORT GROUPS)");
+
+static int remote_controller_index = -1;
+module_param(remote_controller_index, int, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(remote_controller_index,
+		 "Index of remote controller, or -1 for none (for REPORT TARGET PORT GROUPS)");
+
 static int core_alua_check_transition(int state, int *primary);
 static int core_alua_set_tg_pt_secondary_state(
 		struct t10_alua_tg_pt_gp_member *tg_pt_gp_mem,
@@ -62,12 +72,13 @@ int target_emulate_report_target_port_groups(struct se_task *task)
 {
 	struct se_cmd *cmd = task->task_se_cmd;
 	struct se_subsystem_dev *su_dev = cmd->se_dev->se_sub_dev;
-	struct se_port *port;
 	struct t10_alua_tg_pt_gp *tg_pt_gp;
-	struct t10_alua_tg_pt_gp_member *tg_pt_gp_mem;
 	unsigned char *buf;
 	u32 rd_len = 0, off = 4; /* Skip over RESERVED area to first
 				    Target port group descriptor */
+	int target_ports = (remote_controller_index == -1 ? 1 : 2) * ports_per_controller;
+	int i;
+
 	/*
 	 * Need at least 4 bytes of response data or else we can't
 	 * even fit the return data length.
@@ -80,20 +91,18 @@ int target_emulate_report_target_port_groups(struct se_task *task)
 
 	buf = transport_kmap_data_sg(cmd);
 
+	/* XXX we're assuming buf is big enough to hold our response
+	 * (a safe assumption in our case, since we always allocate
+	 * at least one page and never have more than 32 ports, which
+	 * consumes 132 bytes).  However eg to work with tcm_loop we'd
+	 * have to allocate a bounce buffer if the command data is too
+	 * small, the way we do for INQUIRY */
+
 	spin_lock(&su_dev->t10_alua.tg_pt_gps_lock);
 	list_for_each_entry(tg_pt_gp, &su_dev->t10_alua.tg_pt_gps_list,
 			tg_pt_gp_list) {
-		/*
-		 * Check if the Target port group and Target port descriptor list
-		 * based on tg_pt_gp_members count will fit into the response payload.
-		 * Otherwise, bump rd_len to let the initiator know we have exceeded
-		 * the allocation length and the response is truncated.
-		 */
-		if ((off + 8 + (tg_pt_gp->tg_pt_gp_members * 4)) >
-		     cmd->data_length) {
-			rd_len += 8 + (tg_pt_gp->tg_pt_gp_members * 4);
-			continue;
-		}
+		rd_len += 8 + target_ports * 4;
+
 		/*
 		 * PREF: Preferred target port bit, determine if this
 		 * bit should be set for port group.
@@ -127,27 +136,12 @@ int target_emulate_report_target_port_groups(struct se_task *task)
 		/*
 		 * TARGET PORT COUNT
 		 */
-		buf[off++] = (tg_pt_gp->tg_pt_gp_members & 0xff);
-		rd_len += 8;
+		buf[off++] = (target_ports & 0xff);
 
-		spin_lock(&tg_pt_gp->tg_pt_gp_lock);
-		list_for_each_entry(tg_pt_gp_mem, &tg_pt_gp->tg_pt_gp_mem_list,
-				tg_pt_gp_mem_list) {
-			port = tg_pt_gp_mem->tg_pt;
-			/*
-			 * Start Target Port descriptor format
-			 *
-			 * See spc4r17 section 6.2.7 Table 247
-			 */
-			off += 2; /* Skip over Obsolete */
-			/*
-			 * Set RELATIVE TARGET PORT IDENTIFIER
-			 */
-			buf[off++] = ((port->sep_rtpi >> 8) & 0xff);
-			buf[off++] = (port->sep_rtpi & 0xff);
-			rd_len += 4;
+		for (i = 1; i <= target_ports; ++i) {
+			off += 3;
+			buf[off++] = i;
 		}
-		spin_unlock(&tg_pt_gp->tg_pt_gp_lock);
 	}
 	spin_unlock(&su_dev->t10_alua.tg_pt_gps_lock);
 	/*

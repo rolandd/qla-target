@@ -247,6 +247,15 @@ static char *tcm_qla2xxx_npiv_get_fabric_wwn(struct se_portal_group *se_tpg)
 	return &lport->lport_npiv_name[0];
 }
 
+static u16 tcm_qla2xxx_get_rtpi(struct se_portal_group *se_tpg)
+{
+	struct tcm_qla2xxx_tpg *tpg = container_of(se_tpg,
+				struct tcm_qla2xxx_tpg, se_tpg);
+	struct qla_hw_data *ha = tpg->lport->qla_vha->hw;
+
+	return ((ha->tgt_controller_index & 0xf) << 4 | (ha->tgt_port_index & 0xf)) + 1;
+}
+
 static u16 tcm_qla2xxx_get_tag(struct se_portal_group *se_tpg)
 {
 	struct tcm_qla2xxx_tpg *tpg = container_of(se_tpg,
@@ -1898,6 +1907,7 @@ static struct target_core_fabric_ops tcm_qla2xxx_ops = {
 	.get_fabric_name		= tcm_qla2xxx_get_fabric_name,
 	.get_fabric_proto_ident		= tcm_qla2xxx_get_fabric_proto_ident,
 	.tpg_get_wwn			= tcm_qla2xxx_get_fabric_wwn,
+	.tpg_get_rtpi			= tcm_qla2xxx_get_rtpi,
 	.tpg_get_tag			= tcm_qla2xxx_get_tag,
 	.tpg_get_default_depth		= tcm_qla2xxx_get_default_depth,
 	.tpg_get_pr_transport_id	= tcm_qla2xxx_get_pr_transport_id,
