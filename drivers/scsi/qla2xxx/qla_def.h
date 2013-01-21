@@ -2883,6 +2883,7 @@ struct qla_hw_data {
 	uint8_t tgt_node_name[WWN_SIZE];
 	uint32_t tgt_port_index;
 	uint32_t tgt_controller_index;
+	char irq_name[3][40];
 };
 
 /*

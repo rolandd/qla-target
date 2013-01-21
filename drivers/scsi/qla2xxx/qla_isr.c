@@ -2471,14 +2471,14 @@ struct qla_init_msix_entry {
 };
 
 static struct qla_init_msix_entry msix_entries[3] = {
-	{ "qla2xxx (default)", qla24xx_msix_default },
-	{ "qla2xxx (rsp_q)", qla24xx_msix_rsp_q },
-	{ "qla2xxx (multiq)", qla25xx_msix_rsp_q },
+	{ "qla2xxx-default", qla24xx_msix_default },
+	{ "qla2xxx-rsp_q", qla24xx_msix_rsp_q },
+	{ "qla2xxx-multiq", qla25xx_msix_rsp_q },
 };
 
 static struct qla_init_msix_entry qla82xx_msix_entries[2] = {
-	{ "qla2xxx (default)", qla82xx_msix_default },
-	{ "qla2xxx (rsp_q)", qla82xx_msix_rsp_q },
+	{ "qla2xxx-default", qla82xx_msix_default },
+	{ "qla2xxx-rsp_q", qla82xx_msix_rsp_q },
 };
 
 static void
@@ -2564,13 +2564,18 @@ msix_failed:
 	for (i = 0; i < 2; i++) {
 		qentry = &ha->msix_entries[i];
 		if (IS_QLA82XX(ha)) {
+			sprintf(ha->irq_name[i], "%s@pci:%s",
+				qla82xx_msix_entries[i].name,
+				pci_name(ha->pdev));
 			ret = request_irq(qentry->vector,
 				qla82xx_msix_entries[i].handler,
-				0, qla82xx_msix_entries[i].name, rsp);
+				0, ha->irq_name[i], rsp);
 		} else {
+			sprintf(ha->irq_name[i], "%s@pci:%s",
+				msix_entries[i].name, pci_name(ha->pdev));
 			ret = request_irq(qentry->vector,
 				msix_entries[i].handler,
-				0, msix_entries[i].name, rsp);
+				0, ha->irq_name[i], rsp);
 		}
 		if (ret) {
 			ql_log(ql_log_fatal, vha, 0x00cb,
