@@ -391,35 +391,6 @@ static int qla_tgt_reset(struct scsi_qla_host *vha, void *iocb, int mcmd)
 	s_id[2] = n->u.isp24.port_id[2];
 
 	if (loop_id == 0xFFFF) {
-#warning FIXME: Re-enable Global event handling..
-#if 0
-		/* Global event */
-		printk("Processing qla_tgt_reset with loop_id=0xffff global event............\n");
-		atomic_inc(&ha->qla_tgt->tgt_global_resets_count);
-		qla_tgt_clear_tgt_db(ha->qla_tgt, 1);
-		if (!list_empty(&ha->qla_tgt->sess_list)) {
-			sess = list_entry(ha->qla_tgt->sess_list.next,
-				typeof(*sess), sess_list_entry);
-			switch (mcmd) {
-			case QLA_TGT_NEXUS_LOSS_SESS:
-				mcmd = QLA_TGT_NEXUS_LOSS;
-				break;
-			case QLA_TGT_ABORT_ALL_SESS:
-				mcmd = QLA_TGT_ABORT_ALL;
-				break;
-			case QLA_TGT_NEXUS_LOSS:
-			case QLA_TGT_ABORT_ALL:
-				break;
-			default:
-				printk(KERN_ERR "qla_target(%d): Not allowed "
-					"command %x in %s", vha->vp_idx,
-					mcmd, __func__);
-				sess = NULL;
-				break;
-			}
-		} else
-			sess = NULL;
-#endif
 	} else {
 		if (ha->tgt_ops)
 			sess = ha->tgt_ops->find_sess_by_loop_id(vha, loop_id);
@@ -4601,13 +4572,7 @@ qla_tgt_24xx_config_rings(struct scsi_qla_host *vha, device_reg_t __iomem *reg)
 {
 	struct qla_hw_data *ha = vha->hw;
 
-#warning FIXME: atio_q in/out for ha->mqenable=1..?
 	if (ha->mqenable) {
-#if 0
-                WRT_REG_DWORD(&reg->isp25mq.atio_q_in, 0);
-                WRT_REG_DWORD(&reg->isp25mq.atio_q_out, 0);
-                RD_REG_DWORD(&reg->isp25mq.atio_q_out);
-#endif
 	} else {
 		/* Setup APTIO registers for target mode */
 		WRT_REG_DWORD(&reg->isp24.atio_q_in, 0);
