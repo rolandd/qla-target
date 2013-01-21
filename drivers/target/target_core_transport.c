@@ -3060,9 +3060,9 @@ static int transport_generic_cmd_sequencer(
 
 		cmd->cmd_spdtl = size;
 
-		if (cmd->data_direction == DMA_TO_DEVICE) {
-			pr_err("Rejecting underflow/overflow"
-					" WRITE data\n");
+		if (cmd->data_direction == DMA_TO_DEVICE &&
+		    cmd->se_cmd_flags & SCF_SCSI_DATA_SG_IO_CDB) {
+			pr_err("Rejecting underflow/overflow WRITE data\n");
 			goto out_invalid_cdb_field;
 		}
 		/*
