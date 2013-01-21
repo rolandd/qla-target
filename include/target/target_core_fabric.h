@@ -5,6 +5,7 @@ struct target_core_fabric_ops {
 	struct configfs_subsystem *tf_subsys;
 	char *(*get_fabric_name)(void);
 	u8 (*get_fabric_proto_ident)(struct se_portal_group *);
+	void (*get_fabric_vers_desc)(struct se_portal_group *, void *);
 	char *(*tpg_get_wwn)(struct se_portal_group *);
 	u16 (*tpg_get_tag)(struct se_portal_group *);
 	u32 (*tpg_get_default_depth)(struct se_portal_group *);

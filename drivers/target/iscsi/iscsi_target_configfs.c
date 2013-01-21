@@ -22,6 +22,7 @@
 #include <linux/configfs.h>
 #include <linux/export.h>
 #include <linux/inet.h>
+#include <asm/unaligned.h>
 #include <target/target_core_base.h>
 #include <target/target_core_fabric.h>
 #include <target/target_core_fabric_configfs.h>
@@ -1491,6 +1492,11 @@ static char *iscsi_get_fabric_name(void)
 	return "iSCSI";
 }
 
+static void iscsi_get_fabric_vers_desc(struct se_portal_group *se_tpg, void *desc)
+{
+	put_unaligned_be16(0x0960, desc);
+}
+
 static u32 iscsi_get_task_tag(struct se_cmd *se_cmd)
 {
 	struct iscsi_cmd *cmd = container_of(se_cmd, struct iscsi_cmd, se_cmd);
@@ -1781,6 +1787,7 @@ int iscsi_target_register_configfs(void)
 	 */
 	fabric->tf_ops.get_fabric_name = &iscsi_get_fabric_name;
 	fabric->tf_ops.get_fabric_proto_ident = &iscsi_get_fabric_proto_ident;
+	fabric->tf_ops.get_fabric_vers_desc = &iscsi_get_fabric_vers_desc;
 	fabric->tf_ops.tpg_get_wwn = &lio_tpg_get_endpoint_wwn;
 	fabric->tf_ops.tpg_get_tag = &lio_tpg_get_tag;
 	fabric->tf_ops.tpg_get_default_depth = &lio_tpg_get_default_depth;

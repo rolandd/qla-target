@@ -70,6 +70,14 @@ target_emulate_inquiry_std(struct se_cmd *cmd, char *buf)
 {
 	struct se_lun *lun = cmd->se_lun;
 	struct se_device *dev = cmd->se_dev;
+	struct se_portal_group *tpg;
+	int off;
+
+	static const __be16 vers_desc[] = {
+		cpu_to_be16(0x0080), /* SAM-4, no version claimed */
+		cpu_to_be16(0x0460), /* SPC-4, no version claimed */
+		cpu_to_be16(0x04c0), /* SBC-3, no version claimed */
+	};
 
 	/* Set RMB (removable media) for tape devices */
 	if (dev->transport->get_device_type(dev) == TYPE_TAPE)
@@ -101,7 +109,34 @@ target_emulate_inquiry_std(struct se_cmd *cmd, char *buf)
 	strncpy(&buf[8], PURE_VENDOR_ID, 8);
 	strncpy(&buf[16], dev->se_sub_dev->t10_wwn.model, 16);
 	strncpy(&buf[32], dev->se_sub_dev->t10_wwn.revision, 4);
-	buf[4] = 31; /* Set additional length to 31 */
+
+	/*
+	 * SPC4 says:
+	 *
+	 * It is recommended that the first version descriptor be used
+	 * for the SCSI architecture standard, followed by the
+	 * physical transport standard if any, followed by the SCSI
+	 * transport protocol standard, followed by the appropriate
+	 * SPC-x version, followed by the device type command set,
+	 * followed by a secondary command set if any.
+	 */
+
+	off = 58;
+
+	memcpy(buf + off, vers_desc, 2);
+	off += 2;
+
+	if (lun->lun_sep) {
+		tpg = lun->lun_sep->sep_tpg;
+		if (tpg->se_tpg_tfo->get_fabric_vers_desc) {
+			tpg->se_tpg_tfo->get_fabric_vers_desc(tpg, buf + off);
+			off += 2;
+		}
+	}
+
+	memcpy(buf + off, vers_desc + 1, sizeof vers_desc - 2);
+
+	buf[4] = 95 - 4; /* additional length */
 
 	return 0;
 }
