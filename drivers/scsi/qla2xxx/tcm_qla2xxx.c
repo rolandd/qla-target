@@ -399,7 +399,7 @@ static u32 tcm_qla2xxx_tpg_get_inst_index(struct se_portal_group *se_tpg)
 
 static void tcm_qla2xxx_complete_free(struct work_struct *work)
 {
-	struct qla_tgt_cmd *cmd = container_of(work, struct qla_tgt_cmd, work);
+	struct qla_tgt_cmd *cmd = container_of(work, struct qla_tgt_cmd, free_work);
 
 	transport_generic_free_cmd(&cmd->se_cmd, 0);
 }
@@ -411,8 +411,8 @@ static void tcm_qla2xxx_complete_free(struct work_struct *work)
  */
 static void tcm_qla2xxx_free_cmd(struct qla_tgt_cmd *cmd)
 {
-	INIT_WORK(&cmd->work, tcm_qla2xxx_complete_free);
-	queue_work(tcm_qla2xxx_free_wq, &cmd->work);
+	INIT_WORK(&cmd->free_work, tcm_qla2xxx_complete_free);
+	queue_work(tcm_qla2xxx_free_wq, &cmd->free_work);
 }
 
 /*

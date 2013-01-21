@@ -875,6 +875,13 @@ void qla_tgt_stop_phase2(struct qla_tgt *tgt)
 }
 EXPORT_SYMBOL(qla_tgt_stop_phase2);
 
+#define assert_work_queue_empty(work) do {	\
+	if (work_pending(work)) {		\
+		WARN_ON(1);			\
+		cancel_work_sync(work);		\
+	}					\
+} while (0)
+
 /* Called from qla_tgt_remove_target() -> qla2x00_remove_one() */
 void qla_tgt_release(struct qla_tgt *tgt)
 {
@@ -887,6 +894,8 @@ void qla_tgt_release(struct qla_tgt *tgt)
 
 	ql_dbg(ql_dbg_tgt_mgt, tgt->vha, 0xe110, "Release of tgt %p finished\n", tgt);
 
+	assert_work_queue_empty(&tgt->sess_work);
+	assert_work_queue_empty(&tgt->srr_work);
 	kfree(tgt);
 }
 
@@ -1155,6 +1164,7 @@ static int __qla_tgt_24xx_handle_abts(struct scsi_qla_host *vha,
 	if (rc != 0) {
 		printk(KERN_ERR "qla_target(%d):  tgt_ops->handle_tmr()"
 				" failed: %d", vha->vp_idx, rc);
+		WARN_ON(work_pending(&mcmd->se_cmd.work));
 		ha->tgt_ops->put_sess(sess);
 		mempool_free(mcmd, qla_tgt_mgmt_cmd_mempool);
 		return -EFAULT;
@@ -1273,6 +1283,8 @@ void qla_tgt_free_mcmd(struct qla_tgt_mgmt_cmd *mcmd)
 	struct scsi_qla_host *vha = mcmd->sess->vha;
 	struct qla_hw_data *ha = vha->hw;
 	unsigned long flags;
+
+	assert_work_queue_empty(&mcmd->se_cmd.work);
 
 	spin_lock_irqsave(&ha->hardware_lock, flags);
 	ha->tgt_ops->put_sess(mcmd->sess);
@@ -2122,6 +2134,7 @@ void qla_tgt_free_cmd(struct qla_tgt_cmd *cmd)
 
 	if (unlikely(cmd->free_sg))
 		kfree(cmd->sg);
+	assert_work_queue_empty(&cmd->work);
 	kmem_cache_free(qla_tgt_cmd_cachep, cmd);
 }
 EXPORT_SYMBOL(qla_tgt_free_cmd);
@@ -2718,6 +2731,7 @@ static int qla_tgt_issue_task_mgmt(struct qla_tgt_sess *sess, uint32_t lun,
 	default:
 		printk(KERN_ERR "qla_target(%d): Unknown task mgmt fn 0x%x\n",
 			    sess->vha->vp_idx, fn);
+		WARN_ON(work_pending(&mcmd->se_cmd.work));
 		ha->tgt_ops->put_sess(mcmd->sess);
 		mempool_free(mcmd, qla_tgt_mgmt_cmd_mempool);
 		return -ENOSYS;
@@ -2727,6 +2741,7 @@ static int qla_tgt_issue_task_mgmt(struct qla_tgt_sess *sess, uint32_t lun,
 	if (res != 0) {
 		printk(KERN_ERR "qla_target(%d): tgt_ops->handle_tmr() failed: %d\n",
 			    sess->vha->vp_idx, res);
+		WARN_ON(work_pending(&mcmd->se_cmd.work));
 		ha->tgt_ops->put_sess(mcmd->sess);
 		mempool_free(mcmd, qla_tgt_mgmt_cmd_mempool);
 		return -EFAULT;
@@ -2811,6 +2826,7 @@ static int __qla_tgt_abort_task(struct scsi_qla_host *vha,
 	if (rc != 0) {
 		printk(KERN_ERR "qla_target(%d): tgt_ops->handle_tmr()"
 			" failed: %d\n", vha->vp_idx, rc);
+		WARN_ON(work_pending(&mcmd->se_cmd.work));
 		ha->tgt_ops->put_sess(sess);
 		mempool_free(mcmd, qla_tgt_mgmt_cmd_mempool);
 		return -EFAULT;
