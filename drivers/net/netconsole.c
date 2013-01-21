@@ -333,6 +333,11 @@ static ssize_t store_enabled(struct netconsole_target *nt,
 	enabled = strtol10_check_range(buf, 0, 1);
 	if (enabled < 0)
 		return enabled;
+	if (enabled == nt->enabled) {
+		printk(KERN_INFO "netconsole: network logging has already %s\n",
+				nt->enabled ? "started" : "stopped");
+		return strnlen(buf, count);
+	}
 
 	if (enabled) {	/* 1 */
 
