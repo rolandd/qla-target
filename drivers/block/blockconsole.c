@@ -477,7 +477,7 @@ static int bcon_create(const char *devname)
 	strlcpy(bc->devname, devname, sizeof(bc->devname));
 	spin_lock_init(&bc->end_io_lock);
 	strcpy(bc->console.name, "bcon");
-	bc->console.flags = CON_PRINTBUFFER | CON_ENABLED; /* FIXME: document flags */
+	bc->console.flags = CON_PRINTBUFFER | CON_ENABLED | CON_ALLDATA; /* FIXME: document flags */
 	bc->console.write = bcon_write;
 	bc->bdev = blkdev_get_by_path(devname, mode, NULL);
 #ifndef MODULE
