@@ -3596,76 +3596,6 @@ static inline sector_t transport_limit_task_sectors(
 	return sectors;
 }
 
-
-/*
- * This function can be used by HW target mode drivers to create a linked
- * scatterlist from all contiguously allocated struct se_task->task_sg[].
- * This is intended to be called during the completion path by TCM Core
- * when struct target_core_fabric_ops->check_task_sg_chaining is enabled.
- */
-void transport_do_task_sg_chain(struct se_cmd *cmd)
-{
-	struct scatterlist *sg_first = NULL;
-	struct scatterlist *sg_prev = NULL;
-	int sg_prev_nents = 0;
-	struct scatterlist *sg;
-	struct se_task *task;
-	u32 chained_nents = 0;
-	int i;
-
-	BUG_ON(!cmd->se_tfo->task_sg_chaining);
-
-	/*
-	 * Walk the struct se_task list and setup scatterlist chains
-	 * for each contiguously allocated struct se_task->task_sg[].
-	 */
-	list_for_each_entry(task, &cmd->t_task_list, t_list) {
-		if (!task->task_sg)
-			continue;
-
-		if (!sg_first) {
-			sg_first = task->task_sg;
-			chained_nents = task->task_sg_nents;
-		} else {
-			sg_chain(sg_prev, sg_prev_nents, task->task_sg);
-			chained_nents += task->task_sg_nents;
-		}
-		/*
-		 * For the padded tasks, use the extra SGL vector allocated
-		 * in transport_allocate_data_tasks() for the sg_prev_nents
-		 * offset into sg_chain() above.
-		 *
-		 * We do not need the padding for the last task (or a single
-		 * task), but in that case we will never use the sg_prev_nents
-		 * value below which would be incorrect.
-		 */
-		sg_prev_nents = (task->task_sg_nents + 1);
-		sg_prev = task->task_sg;
-	}
-	/*
-	 * Setup the starting pointer and total t_tasks_sg_linked_no including
-	 * padding SGs for linking and to mark the end.
-	 */
-	cmd->t_tasks_sg_chained = sg_first;
-	cmd->t_tasks_sg_chained_no = chained_nents;
-
-	pr_debug("Setup cmd: %p cmd->t_tasks_sg_chained: %p and"
-		" t_tasks_sg_chained_no: %u\n", cmd, cmd->t_tasks_sg_chained,
-		cmd->t_tasks_sg_chained_no);
-
-	for_each_sg(cmd->t_tasks_sg_chained, sg,
-			cmd->t_tasks_sg_chained_no, i) {
-
-		pr_debug("SG[%d]: %p page: %p length: %d offset: %d\n",
-			i, sg, sg_page(sg), sg->length, sg->offset);
-		if (sg_is_chain(sg))
-			pr_debug("SG: %p sg_is_chain=1\n", sg);
-		if (sg_is_last(sg))
-			pr_debug("SG: %p sg_is_last=1\n", sg);
-	}
-}
-EXPORT_SYMBOL(transport_do_task_sg_chain);
-
 /*
  * Break up cmd into chunks transport can handle
  */
@@ -3720,7 +3650,7 @@ transport_allocate_data_tasks(struct se_cmd *cmd,
 
 	for (i = 0; i < task_count; i++) {
 		struct se_task *task;
-		unsigned int task_size, task_sg_nents_padded;
+		unsigned int task_size;
 		struct scatterlist *sg;
 		unsigned long flags;
 		int count;
@@ -3738,27 +3668,14 @@ transport_allocate_data_tasks(struct se_cmd *cmd,
 		 * in order to calculate the number per task SGL entries
 		 */
 		task->task_sg_nents = DIV_ROUND_UP(task->task_size, PAGE_SIZE);
-		/*
-		 * Check if the fabric module driver is requesting that all
-		 * struct se_task->task_sg[] be chained together..  If so,
-		 * then allocate an extra padding SG entry for linking and
-		 * marking the end of the chained SGL for every task except
-		 * the last one for (task_count > 1) operation, or skipping
-		 * the extra padding for the (task_count == 1) case.
-		 */
-		if (cmd->se_tfo->task_sg_chaining && (i < (task_count - 1))) {
-			task_sg_nents_padded = (task->task_sg_nents + 1);
-		} else
-			task_sg_nents_padded = task->task_sg_nents;
-
 		task->task_sg = kmalloc(sizeof(struct scatterlist) *
-					task_sg_nents_padded, GFP_KERNEL);
+					task->task_sg_nents, GFP_KERNEL);
 		if (!task->task_sg) {
 			cmd->se_dev->transport->free_task(task);
 			return -ENOMEM;
 		}
 
-		sg_init_table(task->task_sg, task_sg_nents_padded);
+		sg_init_table(task->task_sg, task->task_sg_nents);
 
 		task_size = task->task_size;
 
