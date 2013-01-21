@@ -831,7 +831,6 @@ qla2x00_process_loopback(struct fc_bsg_job *bsg_job)
 			bsg_job->reply_payload.sg_cnt, rsp_data,
 			rsp_data_len);
 	}
-	bsg_job->job_done(bsg_job);
 
 	dma_free_coherent(&ha->pdev->dev, rsp_data_len,
 		rsp_data, rsp_data_dma);
@@ -846,6 +845,7 @@ done_unmap_req_sg:
 	dma_unmap_sg(&ha->pdev->dev,
 	    bsg_job->request_payload.sg_list,
 	    bsg_job->request_payload.sg_cnt, DMA_TO_DEVICE);
+	bsg_job->job_done(bsg_job);
 	return rval;
 }
 
@@ -992,7 +992,6 @@ qla84xx_updatefw(struct fc_bsg_job *bsg_job)
 		bsg_job->reply->result = DID_OK;
 	}
 
-	bsg_job->job_done(bsg_job);
 	dma_pool_free(ha->s_dma_pool, mn, mn_dma);
 
 done_free_fw_buf:
@@ -1002,6 +1001,7 @@ done_unmap_sg:
 	dma_unmap_sg(&ha->pdev->dev, bsg_job->request_payload.sg_list,
 		bsg_job->request_payload.sg_cnt, DMA_TO_DEVICE);
 
+	bsg_job->job_done(bsg_job);
 	return rval;
 }
 
@@ -1198,8 +1198,6 @@ qla84xx_mgmt_cmd(struct fc_bsg_job *bsg_job)
 		}
 	}
 
-	bsg_job->job_done(bsg_job);
-
 done_unmap_sg:
 	if (mgmt_b)
 		dma_free_coherent(&ha->pdev->dev, data_len, mgmt_b, mgmt_dma);
@@ -1213,6 +1211,8 @@ done_unmap_sg:
 
 exit_mgmt:
 	dma_pool_free(ha->s_dma_pool, mn, mn_dma);
+
+	bsg_job->job_done(bsg_job);
 
 	return rval;
 }
