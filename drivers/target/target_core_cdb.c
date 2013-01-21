@@ -700,8 +700,22 @@ int target_emulate_readcapacity(struct se_task *task)
 	struct se_cmd *cmd = task->task_se_cmd;
 	struct se_device *dev = cmd->se_dev;
 	unsigned char *buf;
+	unsigned char *cdb = cmd->t_task_cdb;
 	unsigned long long blocks_long = dev->transport->get_blocks(dev);
 	u32 blocks;
+
+	/*
+	 * SBC-3 says:
+	 *   If the PMI bit is set to zero and the LOGICAL BLOCK
+	 *   ADDRESS field is not set to zero, the device server shall
+	 *   terminate the command with CHECK CONDITION status with
+	 *   the sense key set to ILLEGAL REQUEST and the additional
+	 *   sense code set to INVALID FIELD IN CDB.
+	 */
+	if (!(cdb[8] & 1) && !!(cdb[2] | cdb[3] | cdb[4] | cdb[5])) {
+		cmd->scsi_sense_reason = TCM_INVALID_CDB_FIELD;
+		return -EINVAL;
+	}
 
 	if (blocks_long >= 0x00000000ffffffff)
 		blocks = 0xffffffff;
