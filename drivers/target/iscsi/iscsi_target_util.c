@@ -219,7 +219,7 @@ struct iscsi_cmd *iscsit_allocate_se_cmd(
 	 */
 	transport_init_se_cmd(se_cmd, &lio_target_fabric_configfs->tf_ops,
 			conn->sess->se_sess, data_length, data_direction,
-			sam_task_attr, &cmd->sense_buffer[0]);
+			sam_task_attr, cmd->sense_buffer + 2);
 	return cmd;
 }
 
@@ -256,7 +256,7 @@ struct iscsi_cmd *iscsit_allocate_se_cmd_for_tmr(
 	 */
 	transport_init_se_cmd(se_cmd, &lio_target_fabric_configfs->tf_ops,
 				conn->sess->se_sess, 0, DMA_NONE,
-				MSG_SIMPLE_TAG, &cmd->sense_buffer[0]);
+				MSG_SIMPLE_TAG, cmd->sense_buffer + 2);
 
 	switch (function) {
 	case ISCSI_TM_FUNC_ABORT_TASK:

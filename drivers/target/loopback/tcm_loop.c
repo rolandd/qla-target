@@ -878,11 +878,6 @@ static int tcm_loop_queue_tm_rsp(struct se_cmd *se_cmd)
 	return 0;
 }
 
-static u16 tcm_loop_set_fabric_sense_len(struct se_cmd *se_cmd, u32 sense_length)
-{
-	return 0;
-}
-
 static char *tcm_loop_dump_proto_id(struct tcm_loop_hba *tl_hba)
 {
 	switch (tl_hba->tl_proto_id) {
@@ -1403,7 +1398,6 @@ static int tcm_loop_register_configfs(void)
 	fabric->tf_ops.queue_data_in = &tcm_loop_queue_data_in;
 	fabric->tf_ops.queue_status = &tcm_loop_queue_status;
 	fabric->tf_ops.queue_tm_rsp = &tcm_loop_queue_tm_rsp;
-	fabric->tf_ops.set_fabric_sense_len = &tcm_loop_set_fabric_sense_len;
 	fabric->tf_ops.is_state_remove = &tcm_loop_is_state_remove;
 
 	/*

@@ -2968,16 +2968,19 @@ static int iscsit_send_status(
 	if (cmd->se_cmd.sense_buffer &&
 	   ((cmd->se_cmd.se_cmd_flags & SCF_TRANSPORT_TASK_SENSE) ||
 	    (cmd->se_cmd.se_cmd_flags & SCF_EMULATED_TASK_SENSE))) {
+		put_unaligned_be16(cmd->se_cmd.scsi_sense_length, cmd->sense_buffer);
+		cmd->se_cmd.scsi_sense_length += sizeof (__be16);
+
 		padding		= -(cmd->se_cmd.scsi_sense_length) & 3;
 		hton24(hdr->dlength, cmd->se_cmd.scsi_sense_length);
-		iov[iov_count].iov_base	= cmd->se_cmd.sense_buffer;
+		iov[iov_count].iov_base	= cmd->sense_buffer;
 		iov[iov_count++].iov_len =
 				(cmd->se_cmd.scsi_sense_length + padding);
 		tx_size += cmd->se_cmd.scsi_sense_length;
 
 		if (padding) {
-			memset(cmd->se_cmd.sense_buffer +
-				cmd->se_cmd.scsi_sense_length, 0, padding);
+			memset(cmd->sense_buffer +
+			       cmd->se_cmd.scsi_sense_length, 0, padding);
 			tx_size += padding;
 			pr_debug("Adding %u bytes of padding to"
 				" SENSE.\n", padding);
@@ -2985,7 +2988,7 @@ static int iscsit_send_status(
 
 		if (conn->conn_ops->DataDigest) {
 			iscsit_do_crypto_hash_buf(&conn->conn_tx_hash,
-				cmd->se_cmd.sense_buffer,
+				cmd->sense_buffer,
 				(cmd->se_cmd.scsi_sense_length + padding),
 				0, NULL, (u8 *)&cmd->data_crc);
 

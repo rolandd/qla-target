@@ -1594,21 +1594,6 @@ static int lio_queue_status(struct se_cmd *se_cmd)
 	return 0;
 }
 
-static u16 lio_set_fabric_sense_len(struct se_cmd *se_cmd, u32 sense_length)
-{
-	unsigned char *buffer = se_cmd->sense_buffer;
-	/*
-	 * From RFC-3720 10.4.7.  Data Segment - Sense and Response Data Segment
-	 * 16-bit SenseLength.
-	 */
-	buffer[0] = ((sense_length >> 8) & 0xff);
-	buffer[1] = (sense_length & 0xff);
-	/*
-	 * Return two byte offset into allocated sense_buffer.
-	 */
-	return 2;
-}
-
 static int lio_queue_tm_rsp(struct se_cmd *se_cmd)
 {
 	struct iscsi_cmd *cmd = container_of(se_cmd, struct iscsi_cmd, se_cmd);

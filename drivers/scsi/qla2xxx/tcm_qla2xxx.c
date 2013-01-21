@@ -806,11 +806,6 @@ int tcm_qla2xxx_queue_tm_rsp(struct se_cmd *se_cmd)
 	return 0;
 }
 
-u16 tcm_qla2xxx_set_fabric_sense_len(struct se_cmd *se_cmd, u32 sense_length)
-{
-	return 0;
-}
-
 int tcm_qla2xxx_is_state_remove(struct se_cmd *se_cmd)
 {
 	return 0;
@@ -1812,7 +1807,6 @@ static struct target_core_fabric_ops tcm_qla2xxx_ops = {
 	.queue_data_in			= tcm_qla2xxx_queue_data_in,
 	.queue_status			= tcm_qla2xxx_queue_status,
 	.queue_tm_rsp			= tcm_qla2xxx_queue_tm_rsp,
-	.set_fabric_sense_len		= tcm_qla2xxx_set_fabric_sense_len,
 	.is_state_remove		= tcm_qla2xxx_is_state_remove,
 	/*
 	 * Setup function pointers for generic logic in target_core_fabric_configfs.c
@@ -1862,7 +1856,6 @@ static struct target_core_fabric_ops tcm_qla2xxx_npiv_ops = {
 	.queue_data_in			= tcm_qla2xxx_queue_data_in,
 	.queue_status			= tcm_qla2xxx_queue_status,
 	.queue_tm_rsp			= tcm_qla2xxx_queue_tm_rsp,
-	.set_fabric_sense_len		= tcm_qla2xxx_set_fabric_sense_len,
 	.is_state_remove		= tcm_qla2xxx_is_state_remove,
 	/*
 	 * Setup function pointers for generic logic in target_core_fabric_configfs.c
