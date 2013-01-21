@@ -4758,6 +4758,7 @@ out:
 void __exit qla_tgt_exit(void)
 {
 	destroy_workqueue(qla_tgt_wq);
+	qla_tgt_wq = (void *) 0xd4d4d4d4d4d4d4d4ul;
 	mempool_destroy(qla_tgt_mgmt_cmd_mempool);
 	kmem_cache_destroy(qla_tgt_mgmt_cmd_cachep);
 	kmem_cache_destroy(qla_tgt_cmd_cachep);
