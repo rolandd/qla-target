@@ -933,6 +933,10 @@ struct MPT2SAS_ADAPTER {
 	u8		mfg_pg10_hide_flag;
 	u8		hide_drives;
 
+	/* Pure Storage debug */
+	struct delayed_work debug_timer_work;
+	atomic_t debug_count_resets;
+	int debug_bad_time;
 };
 
 typedef u8 (*MPT_CALLBACK)(struct MPT2SAS_ADAPTER *ioc, u16 smid, u8 msix_index,

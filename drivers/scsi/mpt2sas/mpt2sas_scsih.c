@@ -5527,6 +5527,32 @@ _scsih_sas_device_status_change_event(struct MPT2SAS_ADAPTER *ioc,
 		target_priv_data->tm_busy = 1;
 	else
 		target_priv_data->tm_busy = 0;
+
+	if (event_data->ReasonCode == MPI2_EVENT_SAS_DEV_STAT_RC_INTERNAL_DEVICE_RESET)
+		atomic_inc(&ioc->debug_count_resets);
+	if (event_data->ReasonCode == MPI2_EVENT_SAS_DEV_STAT_RC_CMP_INTERNAL_DEV_RESET)
+		atomic_dec(&ioc->debug_count_resets);
+}
+
+static void mpt2sas_ps_debug_timeout(struct work_struct *work)
+{
+	struct delayed_work *dw;
+	struct MPT2SAS_ADAPTER *ioc;
+	int count;
+
+	dw = to_delayed_work(work);
+	ioc = container_of(dw, struct MPT2SAS_ADAPTER, debug_timer_work);
+
+	count = atomic_read(&ioc->debug_count_resets);
+	if (count) {
+		printk("mpt2sas: debug_count_resets is %i\n", count);
+		if (++ioc->debug_bad_time >= 8) {
+			ioc->debug_bad_time = 0;
+			atomic_set(&ioc->debug_count_resets, 0);
+		}
+	}
+
+	schedule_delayed_work(dw, HZ); /* 1 second */
 }
 
 #ifdef CONFIG_SCSI_MPT2SAS_LOGGING
@@ -7544,6 +7570,11 @@ _scsih_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	/* init local params */
 	ioc = shost_priv(shost);
 	memset(ioc, 0, sizeof(struct MPT2SAS_ADAPTER));
+
+	/* PS debug */
+	INIT_DELAYED_WORK(&ioc->debug_timer_work, mpt2sas_ps_debug_timeout);
+	schedule_delayed_work(&ioc->debug_timer_work, HZ); /* 1 second */
+
 	INIT_LIST_HEAD(&ioc->list);
 	list_add_tail(&ioc->list, &mpt2sas_ioc_list);
 	ioc->shost = shost;
