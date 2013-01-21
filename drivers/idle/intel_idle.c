@@ -72,7 +72,7 @@ static struct cpuidle_driver intel_idle_driver = {
 	.owner = THIS_MODULE,
 };
 /* intel_idle.max_cstate=0 disables driver */
-static int max_cstate = MWAIT_MAX_NUM_CSTATES - 1;
+static int max_cstate = 1;
 
 static unsigned int mwait_substates;
 
