@@ -1849,13 +1849,7 @@ static int qla_tgt_pre_xmit_response(struct qla_tgt_cmd *cmd, struct qla_tgt_prm
 static inline int qla_tgt_need_explicit_conf(struct qla_hw_data *ha,
 	struct qla_tgt_cmd *cmd, int sending_sense)
 {
-	if (ha->enable_class_2)
-		return 0;
-
-	if (sending_sense)
-		return cmd->conf_compl_supported;
-	else
-		return ha->enable_explicit_conf && cmd->conf_compl_supported;
+	return 0;
 }
 
 #ifdef CONFIG_QLA_TGT_DEBUG_SRR
@@ -4628,8 +4622,8 @@ qla_tgt_24xx_config_nvram_stage1(struct scsi_qla_host *vha, struct nvram_24xx *n
 		nv->firmware_options_1 &= __constant_cpu_to_le32(~BIT_13);
 		/* Enable initial LIP */
 		nv->firmware_options_1 &= __constant_cpu_to_le32(~BIT_9);
-		/* Enable FC tapes support */
-		nv->firmware_options_2 |= __constant_cpu_to_le32(BIT_12);
+		/* Disable FC tape support */
+		nv->firmware_options_2 &= __constant_cpu_to_le32(~BIT_12);
 		/* Disable Full Login after LIP */
 		nv->host_p &= __constant_cpu_to_le32(~BIT_10);
 		/* Enable target PRLI control */
