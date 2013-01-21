@@ -641,10 +641,11 @@ target_emulate_evpd_b2(struct se_cmd *cmd, unsigned char *buf)
 	 * A TPWS bit set to one indicates that the device server supports
 	 * the use of the WRITE SAME (16) command (see 5.42) to unmap LBAs.
 	 * A TPWS bit set to zero indicates that the device server does not
-	 * support the use of the WRITE SAME (16) command to unmap LBAs.
+	 * support the use of the WRITE SAME (16) command to unmap
+	 * LBAs.  And similarly for TPWS10.
 	 */
 	if (dev->se_sub_dev->se_dev_attrib.emulate_tpws != 0)
-		buf[5] |= 0x40;
+		buf[5] |= 0x60;
 
 	return 0;
 }

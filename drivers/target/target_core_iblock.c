@@ -185,8 +185,8 @@ static struct se_device *iblock_create_virtdevice(
 		dev->se_sub_dev->se_dev_attrib.unmap_granularity_alignment =
 				q->limits.discard_alignment;
 
-		pr_debug("IBLOCK: BLOCK Discard support available,"
-				" disabled by default\n");
+		dev->se_sub_dev->se_dev_attrib.emulate_tpu = 1;
+		dev->se_sub_dev->se_dev_attrib.emulate_tpws = 1;
 	}
 
 	if (blk_queue_nonrot(q))
