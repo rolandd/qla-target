@@ -1,4 +1,5 @@
 #include <target/target_core_base.h>
+#include <linux/btree.h>
 
 #define TCM_QLA2XXX_VERSION	"v0.1"
 /* length of ASCII WWPNs including pad */
@@ -45,21 +46,6 @@ struct tcm_qla2xxx_tpg {
 
 #define QLA_TPG_ATTRIB(tpg)	(&(tpg)->tpg_attrib)
 
-/*
- * Used for the 24-bit lport->lport_fcport_map;
- */
-struct tcm_qla2xxx_fc_al_pa {
-	struct se_node_acl *se_nacl;
-};
-
-struct tcm_qla2xxx_fc_area {
-	struct tcm_qla2xxx_fc_al_pa al_pas[256];
-};
-
-struct tcm_qla2xxx_fc_domain {
-	struct tcm_qla2xxx_fc_area areas[256];
-};
-
 struct tcm_qla2xxx_fc_loopid {
 	struct se_node_acl *se_nacl;
 };
@@ -77,10 +63,10 @@ struct tcm_qla2xxx_lport {
 	char lport_name[TCM_QLA2XXX_NAMELEN];
 	/* ASCII formatted WWPN+WWNN for NPIV FC Target Lport */
 	char lport_npiv_name[TCM_QLA2XXX_NPIV_NAMELEN];
-	/* vmalloc'ed memory for fc_port pointers in 24-bit FC Port ID space */
-	char *lport_fcport_map;
+	/* map for fc_port pointers in 24-bit FC Port ID space */
+	struct btree_head32 lport_fcport_map;
 	/* vmalloc-ed memory for fc_port pointers for 16-bit FC loop ID */
-	char *lport_loopid_map;
+	struct tcm_qla2xxx_fc_loopid *lport_loopid_map;
 	/* Pointer to struct scsi_qla_host from qla2xxx LLD */
 	struct scsi_qla_host *qla_vha;
 	/* Pointer to struct scsi_qla_host for NPIV VP from qla2xxx LLD */
