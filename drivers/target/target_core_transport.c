@@ -2750,10 +2750,14 @@ static int transport_generic_cmd_sequencer(
 	case MODE_SELECT:
 		size = cdb[4];
 		cmd->se_cmd_flags |= SCF_SCSI_CONTROL_SG_IO_CDB;
+		if (!passthrough)
+			cmd->execute_task = target_emulate_modeselect;
 		break;
 	case MODE_SELECT_10:
 		size = (cdb[7] << 8) + cdb[8];
 		cmd->se_cmd_flags |= SCF_SCSI_CONTROL_SG_IO_CDB;
+		if (!passthrough)
+			cmd->execute_task = target_emulate_modeselect;
 		break;
 	case MODE_SENSE:
 		size = cdb[4];
