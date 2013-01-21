@@ -695,6 +695,13 @@ int target_report_luns(struct se_task *se_task)
 	 * See SPC3 r07, page 159.
 	 */
 done:
+	/*
+	 * If no real LUNs are accessible, report an allocation length
+	 * of 1 LUN to account for virtual LUN 0.
+	 */
+	if (lun_count == 0)
+		lun_count = 1;
+
 	transport_kunmap_data_sg(se_cmd);
 	lun_count *= 8;
 	buf[0] = ((lun_count >> 24) & 0xff);
