@@ -1978,6 +1978,7 @@ qla2x00_error_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, sts_entry_t *pkt)
 		/* Target command with high bits of handle set */
 		qla_printk(KERN_ERR, ha, "%s: error entry, type 0x%0x status 0x%x\n",
 			   __func__, pkt->entry_type, pkt->entry_status);
+		ha->isp_ops->fw_dump(vha, 1);
 		return;
 	}
 
