@@ -653,7 +653,7 @@ int qla2x00_wait_for_hba_online(struct scsi_qla_host *);
 
 #include <target/target_core_base.h>
 
-#define QLA_TGT_TIMEOUT			10	/* in seconds */
+#define QLA_TGT_TIMEOUT			1  /* in seconds */
 
 #define QLA_TGT_MAX_HW_PENDING_TIME	60 /* in seconds */
 
