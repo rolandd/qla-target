@@ -1427,7 +1427,9 @@ static ssize_t ucma_join_ip_multicast(struct ucma_file *file,
 	join_cmd.uid = cmd.uid;
 	join_cmd.id = cmd.id;
 	join_cmd.addr_size = rdma_addr_size((struct sockaddr *) &cmd.addr);
-	if (!join_cmd.addr_size)
+	if (!join_cmd.addr_size ||
+	    join_cmd.addr_size > sizeof(join_cmd.addr) ||
+	    join_cmd.addr_size > sizeof(cmd.addr))
 		return -EINVAL;
 
 	join_cmd.join_flags = RDMA_MC_JOIN_FLAG_FULLMEMBER;
